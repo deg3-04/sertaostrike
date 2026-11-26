@@ -1,0 +1,12 @@
+CORPO
+=====
+
+Grave cada som abaixo e salve NESTA PASTA com o nome indicado.
+Para ter variações (o jogo sorteia uma a cada vez), use _2, _3... até _5.
+Formatos aceitos: .wav, .mp3, .ogg, .m4a, .webm ou .flac.
+
+ARQUIVO         SOM                              COMO GRAVAR
+footstep_1.wav  Passo                            tum (grave 2 ou 3 variações)
+land_1.wav      Cair de um pulo                  tóim
+hurt_1.wav      Levar tiro                       ai!
+death_1.wav     Morrer                           aaargh / morri

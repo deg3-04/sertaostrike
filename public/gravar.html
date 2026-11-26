@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sertão Strike — Estúdio da Zoeira</title>
+<link rel="stylesheet" href="/css/style.css">
+<style>
+  html, body { overflow: auto; height: auto; }
+  body { background: #11141b; color: var(--text); font-family: var(--font); margin: 0; }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 24px 16px 60px; }
+  h1 { font-size: 30px; margin: 0; color: var(--accent); letter-spacing: 1px; }
+  .sub { color: var(--muted); margin: 6px 0 18px; line-height: 1.5; }
+  .bar { position: sticky; top: 0; z-index: 2; background: #11141bee; backdrop-filter: blur(6px); padding: 10px 0; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; border-bottom: 1px solid var(--line); margin-bottom: 14px; }
+  .prog { flex: 1; min-width: 200px; height: 10px; background: rgba(255,255,255,.08); border-radius: 6px; overflow: hidden; }
+  .prog > i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--accent2), var(--accent)); transition: width .3s; }
+  .note { background: rgba(255,182,39,.08); border: 1px solid rgba(255,182,39,.35); border-radius: 10px; padding: 10px 14px; margin-bottom: 14px; font-size: 14px; line-height: 1.5; }
+  .note.err { background: rgba(255,77,77,.08); border-color: rgba(255,77,77,.4); }
+  h2 { font-size: 15px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); margin: 24px 0 8px; }
+  .slot { display: grid; grid-template-columns: minmax(150px, 1.2fr) 2fr auto; gap: 10px; align-items: center; background: var(--panel2); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin-bottom: 6px; }
+  .slot.done { border-color: rgba(58,208,192,.35); }
+  .slot b { display: block; font-size: 15px; }
+  .slot small { color: var(--muted); font-size: 12px; }
+  .vars { display: flex; gap: 6px; flex-wrap: wrap; }
+  .chip { display: inline-flex; align-items: center; gap: 2px; background: rgba(58,208,192,.12); border: 1px solid rgba(58,208,192,.35); border-radius: 999px; padding: 2px 4px 2px 10px; font-size: 13px; }
+  .chip button { background: none; border: 0; color: var(--text); cursor: pointer; font-size: 13px; padding: 3px 6px; border-radius: 999px; }
+  .chip button:hover { background: rgba(255,255,255,.1); }
+  .empty { color: var(--muted); font-size: 13px; font-style: italic; }
+  .acts { display: flex; gap: 6px; justify-content: flex-end; flex-wrap: wrap; }
+  .b { background: rgba(255,255,255,.07); border: 1px solid var(--line); color: var(--text); border-radius: 8px; padding: 7px 12px; font: inherit; font-size: 13px; cursor: pointer; white-space: nowrap; }
+  .b:hover:not(:disabled) { background: rgba(255,255,255,.14); }
+  .b:disabled { opacity: .4; cursor: default; }
+  .b.rec { background: rgba(255,77,77,.16); border-color: rgba(255,77,77,.5); }
+  .b.rec.on { background: var(--red); color: #fff; animation: pulse 1s infinite; }
+  .b.ok { background: rgba(58,208,192,.2); border-color: rgba(58,208,192,.6); }
+  @keyframes pulse { 50% { opacity: .65; } }
+  .meter { height: 4px; background: rgba(255,255,255,.08); border-radius: 3px; grid-column: 1 / -1; overflow: hidden; display: none; }
+  .meter i { display: block; height: 100%; width: 0; background: var(--red); }
+  .slot.recording .meter { display: block; }
+  .preview { grid-column: 1 / -1; display: none; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 13px; color: var(--muted); }
+  .slot.previewing .preview { display: flex; }
+  canvas.wave { height: 36px; flex: 1; min-width: 160px; background: rgba(0,0,0,.25); border-radius: 6px; }
+  input[type=password] { background: rgba(0,0,0,.35); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; font: inherit; }
+  a { color: var(--accent); }
+  @media (max-width: 640px) { .slot { grid-template-columns: 1fr; } .acts { justify-content: flex-start; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🎙 ESTÚDIO DA ZOEIRA</h1>
+  <p class="sub">Grave com a sua voz (ou com o que tiver à mão) cada som do jogo. Na sala, o dono escolhe
+    <b>Sons → Zoeira</b> e todo mundo ouve as suas gravações. Som que ninguém gravou continua com o som padrão do jogo.
+    Cada som aceita até 5 variações, e o jogo sorteia uma a cada vez. O silêncio do começo e do fim é cortado sozinho.</p>
+  <div id="notes"></div>
+  <div class="bar">
+    <span id="count">carregando...</span>
+    <div class="prog"><i id="progbar"></i></div>
+    <span id="pwbox" hidden>Senha do servidor: <input type="password" id="pw" size="10"></span>
+    <a class="b" href="/">← Voltar ao jogo</a>
+  </div>
+  <div id="list"></div>
+</div>
+
+<script type="module">
+import { SOUND_GROUPS, MAX_VARIATIONS, SOUND_SLOT_IDS } from '/shared/sounds.js';
+
+const $ = (id) => document.getElementById(id);
+const enc = (p) => p.split('/').map(encodeURIComponent).join('/');
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const MAX_REC = 4;          // segundos máximos de gravação
+const OUT_SR = 32000;       // taxa do arquivo salvo
+const canMic = window.isSecureContext && navigator.mediaDevices && window.MediaRecorder;
+let files = {};             // slot -> [arquivos]
+let ctx = null;
+let busy = null;            // slot gravando no momento
+let pending = {};           // slot -> Blob WAV aguardando "Salvar"
+let canUpload = true;
+
+function ac() { if (!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)(); if (ctx.state === 'suspended') ctx.resume(); return ctx; }
+function note(html, err) { const d = document.createElement('div'); d.className = 'note' + (err ? ' err' : ''); d.innerHTML = html; $('notes').appendChild(d); return d; }
+function headers() { const h = {}; const pw = $('pw').value || sessionStorage.getItem('zpw') || ''; if (pw) { h['x-admin'] = pw; try { sessionStorage.setItem('zpw', pw); } catch {} } return h; }
+
+async function loadList() {
+  const res = await fetch('/sounds/index.json?pack=zoeira', { cache: 'no-cache' });
+  const list = res.ok ? await res.json() : [];
+  files = {};
+  for (const f of list) {
+    const rel = f.replace(/^zoeira\//, '');       // ex.: 01-tiros-pistolas/glock_1.wav
+    const name = rel.split('/').pop();
+    const slot = name.replace(/\.[a-z0-9]+$/i, '').replace(/[_-]\d+$/, '').toLowerCase();
+    (files[slot] = files[slot] || []).push(rel);
+  }
+  const base = (p) => p.split('/').pop();
+  for (const k in files) files[k].sort((a, b) => base(a).localeCompare(base(b), undefined, { numeric: true }));
+  render();
+}
+
+function render() {
+  const done = SOUND_SLOT_IDS.filter((s) => files[s] && files[s].length).length;
+  $('count').textContent = `${done} de ${SOUND_SLOT_IDS.length} sons gravados`;
+  $('progbar').style.width = (100 * done / SOUND_SLOT_IDS.length) + '%';
+  $('list').innerHTML = SOUND_GROUPS.map((g) => `<h2>${esc(g.name)} <small style="text-transform:none;letter-spacing:0;opacity:.7">· pasta ${esc(g.dir)}</small></h2>` + g.slots.map(([id, name, hint]) => {
+    const fl = files[id] || [];
+    const full = fl.length >= MAX_VARIATIONS;
+    return `<div class="slot ${fl.length ? 'done' : ''}" id="s_${id}">
+      <div><b>${esc(name)}</b><small>${esc(hint)}</small></div>
+      <div class="vars">${fl.length ? fl.map((f, i) => `<span class="chip">${i + 1}<button data-play="${esc(f)}" title="Ouvir">▶</button><button data-del="${esc(f)}" title="Apagar">✕</button></span>`).join('') : '<span class="empty">padrão do jogo</span>'}</div>
+      <div class="acts">
+        <button class="b rec" data-rec="${id}" ${!canMic || full || !canUpload ? 'disabled' : ''} title="${full ? 'Já tem 5 variações' : 'Gravar pelo microfone'}">● Gravar</button>
+        <label class="b" ${full || !canUpload ? 'style="opacity:.4;pointer-events:none"' : ''} title="Enviar um arquivo de áudio">📁 Arquivo<input type="file" accept="audio/*" data-file="${id}" hidden></label>
+      </div>
+      <div class="meter"><i></i></div>
+      <div class="preview"><canvas class="wave" width="600" height="72"></canvas>
+        <button class="b" data-pplay="${id}">▶ Ouvir</button>
+        <button class="b ok" data-save="${id}">✔ Salvar</button>
+        <button class="b" data-drop="${id}">Descartar</button>
+      </div>
+    </div>`;
+  }).join('')).join('');
+}
+
+// ---------------------------------------------------------- áudio
+// converte para mono, corta silêncio, limita a 3 s, reamostra e normaliza
+async function prepare(buf) {
+  const n = buf.length, mono = new Float32Array(n);
+  for (let c = 0; c < buf.numberOfChannels; c++) { const d = buf.getChannelData(c); for (let i = 0; i < n; i++) mono[i] += d[i] / buf.numberOfChannels; }
+  let peak = 0; for (let i = 0; i < n; i++) peak = Math.max(peak, Math.abs(mono[i]));
+  if (peak < 0.01) throw new Error('Ficou mudo. Confira o microfone e fale mais perto.');
+  const sr = buf.sampleRate, win = Math.floor(sr * 0.01);
+  const rms = (i) => { let s = 0; for (let j = i; j < Math.min(n, i + win); j++) s += mono[j] * mono[j]; return Math.sqrt(s / win); };
+  let a = 0; while (a < n && rms(a) < peak * 0.06) a += win;
+  let b = n - win; while (b > a && rms(b) < peak * 0.03) b -= win;
+  a = Math.max(0, a - Math.floor(sr * 0.008));
+  b = Math.min(n, b + win + Math.floor(sr * 0.12), a + sr * 3);
+  const len = Math.max(1, b - a);
+  const off = new OfflineAudioContext(1, Math.ceil(len * OUT_SR / sr), OUT_SR);
+  const src = off.createBuffer(1, len, sr);
+  src.getChannelData(0).set(mono.subarray(a, b));
+  const node = off.createBufferSource(); node.buffer = src; node.connect(off.destination); node.start();
+  const out = (await off.startRendering()).getChannelData(0);
+  let pk = 0; for (const v of out) pk = Math.max(pk, Math.abs(v));
+  for (let i = 0; i < out.length; i++) out[i] *= 0.9 / pk;
+  const fi = Math.min(out.length, Math.floor(OUT_SR * 0.003)), fo = Math.min(out.length, Math.floor(OUT_SR * 0.03));
+  for (let i = 0; i < fi; i++) out[i] *= i / fi;
+  for (let i = 0; i < fo; i++) out[out.length - 1 - i] *= i / fo;
+  return out;
+}
+function wav(y, sr) {
+  const b = new DataView(new ArrayBuffer(44 + y.length * 2));
+  const w = (o, s) => { for (let i = 0; i < s.length; i++) b.setUint8(o + i, s.charCodeAt(i)); };
+  w(0, 'RIFF'); b.setUint32(4, 36 + y.length * 2, true); w(8, 'WAVE'); w(12, 'fmt ');
+  b.setUint32(16, 16, true); b.setUint16(20, 1, true); b.setUint16(22, 1, true); b.setUint32(24, sr, true);
+  b.setUint32(28, sr * 2, true); b.setUint16(32, 2, true); b.setUint16(34, 16, true); w(36, 'data'); b.setUint32(40, y.length * 2, true);
+  for (let i = 0; i < y.length; i++) b.setInt16(44 + i * 2, Math.max(-1, Math.min(1, y[i])) * 32767, true);
+  return new Blob([b], { type: 'audio/wav' });
+}
+function drawWave(canvas, y) {
+  const g = canvas.getContext('2d'), W = canvas.width, H = canvas.height;
+  g.clearRect(0, 0, W, H); g.fillStyle = '#ffb627';
+  const step = Math.max(1, Math.floor(y.length / W));
+  for (let x = 0; x < W; x++) { let m = 0; for (let j = x * step; j < Math.min(y.length, (x + 1) * step); j++) m = Math.max(m, Math.abs(y[j])); const h = Math.max(1, m * H * 0.95); g.fillRect(x, (H - h) / 2, 1, h); }
+}
+async function playBlob(blob) { const c = ac(); const buf = await c.decodeAudioData(await blob.arrayBuffer()); const s = c.createBufferSource(); s.buffer = buf; s.connect(c.destination); s.start(); }
+
+async function toPreview(slot, blob) {
+  const c = ac();
+  const y = await prepare(await c.decodeAudioData(await blob.arrayBuffer()));
+  pending[slot] = wav(y, OUT_SR);
+  const el = $('s_' + slot);
+  el.classList.add('previewing');
+  drawWave(el.querySelector('canvas'), y);
+  playBlob(pending[slot]);
+}
+
+// ---------------------------------------------------------- gravação
+let stream = null;
+async function record(slot, btn) {
+  if (busy) return;
+  const el = $('s_' + slot);
+  try {
+    if (!stream) stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: true, autoGainControl: false } });
+  } catch (e) { note('Não consegui usar o microfone: ' + esc(e.message) + '. Libere o acesso ao microfone no navegador.', true); return; }
+  busy = slot;
+  const c = ac();
+  const an = c.createAnalyser(); an.fftSize = 512; c.createMediaStreamSource(stream).connect(an);
+  const data = new Uint8Array(an.fftSize), bar = el.querySelector('.meter i');
+  const rec = new MediaRecorder(stream);
+  const chunks = [];
+  rec.ondataavailable = (e) => chunks.push(e.data);
+  let raf = 0;
+  const meter = () => { an.getByteTimeDomainData(data); let m = 0; for (const v of data) m = Math.max(m, Math.abs(v - 128)); bar.style.width = Math.min(100, m / 1.28) + '%'; raf = requestAnimationFrame(meter); };
+  const stop = () => { if (rec.state === 'recording') rec.stop(); };
+  rec.onstop = async () => {
+    cancelAnimationFrame(raf); clearTimeout(timer);
+    el.classList.remove('recording'); btn.classList.remove('on'); btn.textContent = '● Gravar';
+    busy = null; btn.onclick = null;
+    try { await toPreview(slot, new Blob(chunks, { type: rec.mimeType })); } catch (e) { note(esc(e.message), true); }
+  };
+  el.classList.add('recording'); el.classList.remove('previewing');
+  btn.classList.add('on'); btn.textContent = '■ Parar';
+  rec.start(); meter();
+  const timer = setTimeout(stop, MAX_REC * 1000);
+  btn.onclick = (e) => { e.stopPropagation(); stop(); };
+}
+
+async function save(slot) {
+  const blob = pending[slot];
+  if (!blob) return;
+  const res = await fetch('/sounds/zoeira/' + slot, { method: 'POST', body: blob, headers: { ...headers(), 'Content-Type': 'audio/wav' } });
+  const j = await res.json().catch(() => ({}));
+  if (!res.ok) { note('Não salvou: ' + esc(j.erro || res.status), true); return; }
+  delete pending[slot];
+  await loadList();
+}
+
+$('list').addEventListener('click', async (e) => {
+  const t = e.target.closest('button'); if (!t) return;
+  const d = t.dataset;
+  if (d.rec && !t.classList.contains('on')) record(d.rec, t);
+  else if (d.play) playBlob(await (await fetch('/sounds/zoeira/' + enc(d.play), { cache: 'no-cache' })).blob());
+  else if (d.del) {
+    if (!confirm('Apagar esta gravação?')) return;
+    const res = await fetch('/sounds/zoeira/' + enc(d.del), { method: 'DELETE', headers: headers() });
+    if (!res.ok) note('Não apagou: ' + esc((await res.json().catch(() => ({}))).erro || res.status), true);
+    loadList();
+  }
+  else if (d.pplay && pending[d.pplay]) playBlob(pending[d.pplay]);
+  else if (d.save) save(d.save);
+  else if (d.drop) { delete pending[d.drop]; $('s_' + d.drop).classList.remove('previewing'); }
+});
+$('list').addEventListener('change', async (e) => {
+  const slot = e.target.dataset.file; if (!slot || !e.target.files[0]) return;
+  try { await toPreview(slot, e.target.files[0]); } catch (err) { note('Não consegui ler o arquivo: ' + esc(err.message), true); }
+  e.target.value = '';
+});
+
+// ---------------------------------------------------------- início
+if (!canMic) note('🎤 O navegador só libera o microfone em <b>http://localhost</b> (no computador que roda o servidor) ou em HTTPS. Daqui dá para enviar arquivos gravados no celular pelo botão <b>📁 Arquivo</b>, ou abra esta página no computador do servidor.');
+try {
+  const c = await (await fetch('/sounds/zoeira/can-upload', { cache: 'no-cache' })).json();
+  canUpload = c.ok;
+  if (!c.ok) note('A gravação está desativada no servidor (<code>"soundUploads": false</code> no config.json). Dá para ouvir, mas não gravar.', true);
+  if (c.senha) { $('pwbox').hidden = false; $('pw').value = sessionStorage.getItem('zpw') || ''; }
+} catch {}
+loadList();
+</script>
+</body>
+</html>

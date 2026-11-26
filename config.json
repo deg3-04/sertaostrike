@@ -31,6 +31,8 @@
     "friendlyFireSelf": true,
     "intermission": 15,
     "bots": 6,
-    "botDifficulty": "normal"
-  }
+    "botDifficulty": "normal",
+    "soundPack": "padrao"
+  },
+  "soundUploads": true
 }

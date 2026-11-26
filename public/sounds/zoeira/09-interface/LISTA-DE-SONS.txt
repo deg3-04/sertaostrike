@@ -1,0 +1,13 @@
+INTERFACE
+=========
+
+Grave cada som abaixo e salve NESTA PASTA com o nome indicado.
+Para ter variações (o jogo sorteia uma a cada vez), use _2, _3... até _5.
+Formatos aceitos: .wav, .mp3, .ogg, .m4a, .webm ou .flac.
+
+ARQUIVO         SOM                              COMO GRAVAR
+ui_start_1.wav  Começo da partida                bora!
+ui_end_1.wav    Fim da partida                   acabou!
+ui_spawn_1.wav  Renascer                         voltei
+ui_chat_1.wav   Mensagem no chat                 plim
+radio_1.wav     Rádio                            kssh

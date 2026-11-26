@@ -1,3 +1,18 @@
+PACOTES DE SOM
+==============
+
+O dono da sala escolhe o pacote em "Regras da partida" → Sons (ou em
+Configurações → Partida). Todo mundo na sala ouve o mesmo pacote:
+
+  Padrão        sons gerados pelo jogo + arquivos soltos nesta pasta (abaixo)
+  Profissional  gravações reais de armas, em sounds/profissional/ (CC0)
+  Zoeira        gravações da galera, em sounds/zoeira/
+                grave pelo estúdio: http://localhost:3000/gravar.html
+
+Som que faltar no pacote usa o som gerado pelo jogo. Os nomes de todos os
+sons estão em shared/sounds.js (ak47, awp, footstep, death, ui_start...).
+Um arquivo <arma>_far_1.wav vira a versão da arma ouvida de longe.
+
 SONS REAIS (OPCIONAL)
 =====================
 

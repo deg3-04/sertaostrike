@@ -9,6 +9,7 @@ import { Character, CHAR_STYLE } from './models.js';
 import { MAP_LIST, mapName } from '/shared/maps.js';
 import { mapCard } from './mappreview.js';
 import { MODES, modeName, GUNGAME_LIST, HALF_STEP_KEYS } from '/shared/constants.js';
+import { SOUND_PACKS } from '/shared/sounds.js';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -515,6 +516,7 @@ export class Menus {
         ${num('intermission', 'Placar final (s)', 'Tempo até a próxima partida')}
         ${num('bots', 'Completar com bots até', 'Total de jogadores; bots saem quando entra gente (0 = sem bots)')}
         ${sel('botDifficulty', 'Dificuldade dos bots', [['easy', 'Fácil'], ['normal', 'Normal'], ['hard', 'Difícil']])}
+        ${sel('soundPack', 'Pacote de sons', SOUND_PACKS.map((p) => [p.id, p.name]), 'Todo mundo na sala ouve o mesmo pacote • <a href="/gravar.html" target="_blank">gravar sons da zoeira</a>')}
       </div>
       ${host ? `<div class="row wrap" style="margin-top:16px;gap:8px">
         <button class="btn primary" id="mapply">Aplicar</button>

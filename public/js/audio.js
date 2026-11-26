@@ -10,9 +10,12 @@
 // Na reprodução entram o atraso do som pela distância (343 m/s), o
 // abafamento atrás de paredes e o eco do lugar (sala fechada × céu aberto).
 //
-// Sons reais: coloque arquivos .ogg/.mp3/.wav em public/sounds/ com o nome
-// da arma (ak47.ogg, awp_1.wav, awp_2.wav...) e eles substituem os gerados.
-// Também valem explosion.* (granada) e mine.* (mina). Veja o LEIA-ME.
+// Pacotes de som (o dono da sala escolhe, veja shared/sounds.js):
+//   padrao       → sons gerados aqui + arquivos soltos em public/sounds/
+//   profissional → gravações reais em public/sounds/profissional/
+//   zoeira       → gravações da galera em public/sounds/zoeira/ (gravar.html)
+// Cada arquivo tem o nome do "espaço" de som (ak47_1.wav, footstep_2.wav,
+// awp_far_1.wav = AWP ouvida de longe...). O que faltar usa o som gerado.
 
 const SOUND_OF_SPEED = 343;
 
@@ -186,6 +189,15 @@ function makeIR(ctx, kind) {
   return ir;
 }
 
+// deixa o pico do som em "level" (gravações caseiras vêm em volumes bem diferentes)
+function normalize(buf, level) {
+  let peak = 0;
+  for (let c = 0; c < buf.numberOfChannels; c++) { const d = buf.getChannelData(c); for (let i = 0; i < d.length; i++) peak = Math.max(peak, Math.abs(d[i])); }
+  if (peak < 1e-4) return;
+  const g = level / peak;
+  for (let c = 0; c < buf.numberOfChannels; c++) { const d = buf.getChannelData(c); for (let i = 0; i < d.length; i++) d[i] *= g; }
+}
+
 export class GameAudio {
   constructor(settings) {
     this.settings = settings;
@@ -197,6 +209,8 @@ export class GameAudio {
     this.voices = 0;
     this.shotCache = new Map();
     this.samples = {};
+    this.pack = 'padrao';
+    this.packLoad = 0; // contador para descartar carregamentos antigos
   }
 
   init() {
@@ -227,26 +241,67 @@ export class GameAudio {
     for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
     this.noiseBuf = nb;
     this.applyVolumes();
-    this.loadSamples();
+    this.loadSamples(this.pack);
     this.prerender();
   }
 
-  // sons reais opcionais em public/sounds/ (lista vem do servidor)
-  async loadSamples() {
+  // troca o pacote de som (chamado quando o dono da sala muda a opção).
+  // force = recarrega mesmo sem mudar (ex.: alguém gravou sons novos)
+  setPack(pack, force = false) {
+    pack = pack || 'padrao';
+    if (pack === this.pack && !force) { this.refresh(); return; }
+    this.pack = pack;
+    if (this.ctx) this.loadSamples(pack);
+  }
+
+  // recarrega o pacote só se a lista de arquivos mudou (ex.: alguém gravou
+  // um som novo na página de gravação)
+  async refresh() {
+    if (!this.ctx || this.refreshing) return;
+    this.refreshing = true;
     try {
-      const res = await fetch('/sounds/index.json', { cache: 'no-cache' });
-      if (!res.ok) return;
-      const files = await res.json();
-      for (const f of files) {
-        const key = f.replace(/\.[a-z0-9]+$/i, '').replace(/[_-]\d+$/, '').toLowerCase();
-        try {
-          const buf = await this.ctx.decodeAudioData(await (await fetch('/sounds/' + encodeURIComponent(f))).arrayBuffer());
-          (this.samples[key] = this.samples[key] || []).push(buf);
-        } catch (e) { console.warn('som inválido:', f, e); }
+      const res = await fetch('/sounds/index.json?pack=' + encodeURIComponent(this.pack), { cache: 'no-cache' });
+      if (res.ok && (await res.text()) !== this.lastIndex) this.loadSamples(this.pack);
+    } catch { /* servidor fora: fica como está */ }
+    this.refreshing = false;
+  }
+
+  // sons do pacote (lista vem do servidor). Os arquivos são normalizados ao
+  // carregar, então gravações altas ou baixas tocam no mesmo volume.
+  async loadSamples(pack) {
+    const my = ++this.packLoad;
+    const next = {};
+    try {
+      const res = await fetch('/sounds/index.json?pack=' + encodeURIComponent(pack), { cache: 'no-cache' });
+      if (res.ok) {
+        const text = await res.text();
+        this.lastIndex = text;
+        const files = JSON.parse(text);
+        await Promise.all(files.map(async (f) => {
+          const name = f.split('/').pop();
+          const key = name.replace(/\.[a-z0-9]+$/i, '').replace(/[_-]\d+$/, '').toLowerCase();
+          try {
+            const url = '/sounds/' + f.split('/').map(encodeURIComponent).join('/');
+            const buf = await this.ctx.decodeAudioData(await (await fetch(url, { cache: 'no-cache' })).arrayBuffer());
+            normalize(buf, 0.9);
+            (next[key] = next[key] || []).push(buf);
+          } catch (e) { console.warn('som inválido:', f, e); }
+        }));
       }
-      const n = Object.keys(this.samples).length;
-      if (n) console.log(`sons reais carregados: ${Object.keys(this.samples).join(', ')}`);
     } catch { /* sem pasta de sons: usa os gerados */ }
+    if (my !== this.packLoad) return; // outro pacote foi pedido enquanto carregava
+    this.samples = next;
+    const keys = Object.keys(next);
+    console.log(`pacote de som "${pack}": ${keys.length ? keys.join(', ') : 'só sons gerados'}`);
+  }
+
+  // toca um som do pacote, se existir. Devolve true se tocou (aí o som
+  // gerado não toca). rateVar = variação aleatória de velocidade.
+  sam(key, dest, t, gain = 1, rateVar = 0.06) {
+    const list = this.samples[key];
+    if (!list || !dest) return false;
+    this.play(list[Math.floor(Math.random() * list.length)], dest, t, gain, 1 - rateVar / 2 + Math.random() * rateVar);
+    return true;
   }
 
   // gera os sons das armas aos poucos, sem travar o jogo
@@ -415,7 +470,7 @@ export class GameAudio {
     const ctx = this.ctx, t = ctx.currentTime;
     const sn = w.snd;
     const real = this.samples[w.id];
-    const set = real ? { near: real, far: real } : this.shotSet(w);
+    const set = real ? { near: real, far: this.samples[w.id + '_far'] || real } : this.shotSet(w);
     const rate = real ? 0.97 + Math.random() * 0.06 : 1;
     const pick = (list) => list[Math.floor(Math.random() * list.length)];
     const vol = (sn.power || 1) * (local ? 0.6 : 1.0) * (real ? 0.9 : 1.1);
@@ -437,6 +492,7 @@ export class GameAudio {
   dryFire() {
     if (!this.ready()) return;
     const t = this.ctx.currentTime, d = this.out(null, { gain: 0.6 });
+    if (this.sam('dryfire', d, t, 0.6)) return;
     this.noise(d, t, { type: 'highpass', freq: 3000, gain: 0.4, decay: 0.01 });
     this.tone(d, t, { type: 'square', f0: 1400, dur: 0.012, gain: 0.08 });
   }
@@ -452,6 +508,7 @@ export class GameAudio {
     const d = this.out(pos, { gain: pos ? 0.7 : 0.55, ref: 2, roll: 1.5, maxDist: 30 });
     if (!d) return;
     if (w.shellReload) return;
+    if (this.sam('reload', d, t, 0.8, 0.02)) return;
     const type = w.type;
     const marks = type === 'pistol' ? [[0.22, 1800], [0.6, 1300], [0.85, 2600]] : type === 'sniper' ? [[0.28, 1500], [0.6, 1100], [0.83, 900], [0.88, 1400]] : [[0.25, 1400], [0.62, 1000], [0.8, 2200], [0.85, 1700]];
     for (const [f, freq] of marks) this.click(d, t + dur * f, freq * (0.95 + Math.random() * 0.1));
@@ -460,7 +517,7 @@ export class GameAudio {
   shell(pos) {
     if (!this.ready()) return;
     const t = this.ctx.currentTime, d = this.out(pos, { gain: 0.5, ref: 2, maxDist: 25 });
-    if (d) { this.click(d, t, 1600, 0.3); this.click(d, t + 0.12, 1200, 0.2); }
+    if (d && !this.sam('shell', d, t, 0.5)) { this.click(d, t, 1600, 0.3); this.click(d, t + 0.12, 1200, 0.2); }
   }
   shellInsert(last) {
     if (!this.ready()) return;
@@ -470,11 +527,13 @@ export class GameAudio {
   bolt(delay = 0.2) {
     if (!this.ready()) return;
     const t = this.ctx.currentTime + delay, d = this.out(null, { gain: 0.5 });
+    if (this.sam('bolt', d, t, 0.7, 0.02)) return;
     this.click(d, t, 1300, 0.3, 0.02); this.click(d, t + 0.18, 900, 0.3, 0.025); this.click(d, t + 0.36, 1500, 0.3, 0.02);
   }
   deploy(w) {
     if (!this.ready()) return;
     const t = this.ctx.currentTime, d = this.out(null, { gain: 0.45 });
+    if (this.sam('deploy', d, t, 0.6)) return;
     this.noise(d, t, { type: 'bandpass', freq: 700, q: 0.6, gain: 0.12, decay: 0.08, attack: 0.03 });
     if (w.type !== 'melee' && w.type !== 'grenade') this.click(d, t + 0.18, 1800, 0.25);
     else if (w.type === 'melee') this.noise(d, t + 0.05, { type: 'highpass', freq: 5000, q: 2, gain: 0.15, decay: 0.12 });
@@ -482,6 +541,7 @@ export class GameAudio {
   scope() {
     if (!this.ready()) return;
     const t = this.ctx.currentTime, d = this.out(null, { gain: 0.5 });
+    if (this.sam('scope', d, t, 0.5)) return;
     this.click(d, t, 3500, 0.25, 0.015);
   }
 
@@ -491,6 +551,7 @@ export class GameAudio {
     const t = this.ctx.currentTime;
     const d = this.out(local ? null : pos, { gain: (local ? 0.28 : 0.85) * loud, ref: 2.5, roll: 1.6, maxDist: 32 });
     if (!d) return;
+    if (this.sam('footstep', d, t, 0.7, 0.15)) return;
     const p = 0.85 + Math.random() * 0.3;
     this.noise(d, t, { type: 'lowpass', freq: 650 * p, q: 0.8, gain: 0.55, decay: 0.05 });
     this.noise(d, t + 0.012, { type: 'bandpass', freq: 2200 * p, q: 1.2, gain: 0.12, decay: 0.03 });
@@ -500,6 +561,7 @@ export class GameAudio {
     const t = this.ctx.currentTime;
     const d = this.out(local ? null : pos, { gain: Math.min(1, speed / 9) * (local ? 0.4 : 0.9), ref: 2.5, roll: 1.5, maxDist: 30 });
     if (!d) return;
+    if (this.sam('land', d, t, 0.9)) return;
     this.noise(d, t, { type: 'lowpass', freq: 380, q: 0.7, gain: 0.8, decay: 0.08 });
     this.noise(d, t, { type: 'bandpass', freq: 1800, q: 1, gain: 0.15, decay: 0.04 });
   }
@@ -508,12 +570,14 @@ export class GameAudio {
   hitmarker(kill) {
     if (!this.ready()) return;
     const t = this.ctx.currentTime, d = this.out(null, { gain: 0.5 });
+    if (this.sam('hitmarker', d, t, 0.6)) return;
     this.tone(d, t, { type: 'sine', f0: kill ? 1500 : 1950, dur: 0.045, gain: 0.25 });
     this.tone(d, t + 0.005, { type: 'sine', f0: kill ? 2250 : 2600, dur: 0.035, gain: 0.12 });
   }
   headshot(helmet) {
     if (!this.ready()) return;
     const t = this.ctx.currentTime, d = this.out(null, { gain: 0.6 });
+    if (this.sam('headshot', d, t, 0.8)) return;
     if (helmet) {
       this.tone(d, t, { type: 'sine', f0: 3150, dur: 0.28, gain: 0.25 });
       this.tone(d, t, { type: 'sine', f0: 4730, dur: 0.18, gain: 0.12 });
@@ -526,6 +590,7 @@ export class GameAudio {
   kill() {
     if (!this.ready()) return;
     const t = this.ctx.currentTime, d = this.out(null, { gain: 0.5 });
+    if (this.sam('kill', d, t, 0.9)) return;
     this.tone(d, t, { type: 'triangle', f0: 880, dur: 0.14, gain: 0.25 });
     this.tone(d, t + 0.07, { type: 'triangle', f0: 1320, dur: 0.2, gain: 0.22 });
   }
@@ -533,6 +598,7 @@ export class GameAudio {
   headshotKill() {
     if (!this.ready()) return;
     const t = this.ctx.currentTime, d = this.out(null, { gain: 0.55, rev: 0.25 });
+    if (this.sam('headshotkill', d, t, 1) || this.sam('kill', d, t, 0.9)) return;
     this.noise(d, t, { type: 'highpass', freq: 5000, gain: 0.35, decay: 0.03 });
     this.tone(d, t, { type: 'sine', f0: 2093, dur: 0.35, gain: 0.22 });
     this.tone(d, t + 0.03, { type: 'sine', f0: 3136, dur: 0.3, gain: 0.14 });
@@ -541,6 +607,7 @@ export class GameAudio {
   radio() {
     if (!this.ready()) return;
     const t = this.ctx.currentTime, d = this.out(null, { ui: true });
+    if (this.sam('radio', d, t, 0.5)) return;
     this.noise(d, t, { type: 'bandpass', freq: 2400, q: 1.5, gain: 0.08, decay: 0.06 });
     this.tone(d, t + 0.02, { type: 'square', f0: 1250, dur: 0.06, gain: 0.035 });
     this.tone(d, t + 0.1, { type: 'square', f0: 1650, dur: 0.07, gain: 0.03 });
@@ -548,51 +615,57 @@ export class GameAudio {
   heal() {
     if (!this.ready()) return;
     const t = this.ctx.currentTime, d = this.out(null, { ui: true });
+    if (this.sam('heal', d, t, 0.6)) return;
     this.tone(d, t, { type: 'sine', f0: 520, f1: 780, dur: 0.18, gain: 0.08 });
   }
   levelUp() {
     if (!this.ready()) return;
     const t = this.ctx.currentTime, d = this.out(null, { ui: true, rev: 0.2 });
+    if (this.sam('levelup', d, t, 0.8)) return;
     [587, 740, 880].forEach((f, i) => this.tone(d, t + i * 0.06, { type: 'square', f0: f, dur: 0.12, gain: 0.05 }));
   }
   hurt(dmg) {
     if (!this.ready()) return;
     const t = this.ctx.currentTime, d = this.out(null, { gain: 0.7 });
+    if (this.sam('hurt', d, t, Math.min(1, 0.6 + dmg / 100), 0.12)) return;
     this.noise(d, t, { type: 'lowpass', freq: 320, gain: Math.min(1, 0.3 + dmg / 60), decay: 0.09 });
     this.tone(d, t, { type: 'sine', f0: 110, f1: 60, dur: 0.12, gain: 0.35 });
   }
   death() {
     if (!this.ready()) return;
     const t = this.ctx.currentTime, d = this.out(null, { gain: 0.6, rev: 0.4 });
+    if (this.sam('death', d, t, 1)) return;
     this.tone(d, t, { type: 'sine', f0: 220, f1: 70, dur: 0.6, gain: 0.3 });
     this.noise(d, t, { type: 'lowpass', freq: 400, gain: 0.4, decay: 0.15 });
   }
   knifeSwing(pos) {
     if (!this.ready()) return;
     const t = this.ctx.currentTime, d = this.out(pos, { gain: 0.5, ref: 2, roll: 1.5, maxDist: 25 });
-    if (d) this.noise(d, t, { type: 'bandpass', freq: 600, sweep: 2600, q: 1.5, gain: 0.35, decay: 0.06, attack: 0.04 });
+    if (d && !this.sam('knife', d, t, 0.7)) this.noise(d, t, { type: 'bandpass', freq: 600, sweep: 2600, q: 1.5, gain: 0.35, decay: 0.06, attack: 0.04 });
   }
   knifeHit(pos) {
     if (!this.ready()) return;
     const t = this.ctx.currentTime, d = this.out(pos, { gain: 0.8, ref: 2, maxDist: 25 });
-    if (d) { this.noise(d, t, { type: 'lowpass', freq: 700, gain: 0.7, decay: 0.07 }); this.noise(d, t, { type: 'highpass', freq: 4000, gain: 0.2, decay: 0.03 }); }
+    if (d && !this.sam('knifehit', d, t, 0.9)) { this.noise(d, t, { type: 'lowpass', freq: 700, gain: 0.7, decay: 0.07 }); this.noise(d, t, { type: 'highpass', freq: 4000, gain: 0.2, decay: 0.03 }); }
   }
 
   // ------------------------------------------------------------- granadas
   pin() {
     if (!this.ready()) return;
     const t = this.ctx.currentTime, d = this.out(null, { gain: 0.5 });
+    if (this.sam('pin', d, t, 0.6)) return;
     this.click(d, t, 2400, 0.25); this.tone(d, t + 0.03, { type: 'sine', f0: 3800, dur: 0.12, gain: 0.05 });
   }
   throwSound(pos) {
     if (!this.ready()) return;
     const t = this.ctx.currentTime, d = this.out(pos, { gain: 0.45, ref: 2, maxDist: 25 });
-    if (d) this.noise(d, t, { type: 'bandpass', freq: 400, sweep: 1500, q: 1, gain: 0.3, decay: 0.06, attack: 0.04 });
+    if (d && !this.sam('throw', d, t, 0.6)) this.noise(d, t, { type: 'bandpass', freq: 400, sweep: 1500, q: 1, gain: 0.3, decay: 0.06, attack: 0.04 });
   }
   bounce(pos, kind) {
     if (!this.ready()) return;
     const t = this.ctx.currentTime, d = this.out(pos, { gain: 0.6, ref: 2.5, roll: 1.3, maxDist: 40 });
     if (!d) return;
+    if (this.sam('bounce', d, t, 0.6, 0.15)) return;
     const f = kind === 'he' ? 1500 : 1900;
     this.tone(d, t, { type: 'triangle', f0: f, dur: 0.06, gain: 0.25 });
     this.noise(d, t, { type: 'bandpass', freq: 2600, q: 2, gain: 0.25, decay: 0.02 });
@@ -618,6 +691,7 @@ export class GameAudio {
     if (!this.ready()) return;
     const t = this.ctx.currentTime, d = this.out(pos, { gain: 1.3, ref: 7, roll: 0.8, rev: 1, maxDist: 160 });
     if (!d) return;
+    if (this.sam('flashbang', d, t + Math.min(0.4, this.distTo(pos) / SOUND_OF_SPEED), 1, 0.04)) return;
     this.noise(d, t, { type: 'bandpass', freq: 2100, q: 0.6, gain: 1.1, decay: 0.12 });
     this.noise(d, t, { type: 'highpass', freq: 3000, q: 0.5, gain: 0.7, decay: 0.05 });
     this.tone(d, t, { type: 'sine', f0: 90, f1: 40, dur: 0.3, gain: 0.7 });
@@ -638,6 +712,7 @@ export class GameAudio {
     if (!this.ready()) return;
     const t = this.ctx.currentTime, d = this.out(pos, { gain: 0.8, ref: 4, roll: 1, maxDist: 60 });
     if (!d) return;
+    if (this.sam('smoke', d, t, 0.8)) return;
     this.noise(d, t, { type: 'lowpass', freq: 500, gain: 0.5, decay: 0.05 });
     this.noise(d, t + 0.05, { type: 'highpass', freq: 2500, q: 0.4, gain: 0.25, decay: 0.9, attack: 0.15 });
   }
@@ -647,6 +722,7 @@ export class GameAudio {
     if (!this.ready()) return;
     const t = this.ctx.currentTime, d = this.out(pos, { gain: pos ? 0.8 : 0.55, ref: 2, roll: 1.5, maxDist: 22 });
     if (!d) return;
+    if (this.sam('mineplace', d, t, 0.7)) return;
     this.noise(d, t, { type: 'lowpass', freq: 900, q: 0.6, gain: 0.25, decay: 0.08, attack: 0.03 }); // terra sendo afastada
     this.click(d, t + 0.16, 1500, 0.35, 0.02);
     this.click(d, t + 0.24, 2600, 0.2, 0.015);
@@ -664,6 +740,7 @@ export class GameAudio {
     if (!this.ready()) return;
     const t = this.ctx.currentTime, d = this.out(pos, { gain: 1.1, ref: 3, roll: 1.2, maxDist: 35 });
     if (!d) return;
+    if (this.sam('mineclick', d, t, 1)) return;
     this.click(d, t, 1300, 0.6, 0.025);
     this.tone(d, t, { type: 'triangle', f0: 880, f1: 620, dur: 0.06, gain: 0.25 });
     this.click(d, t + 0.05, 2200, 0.3, 0.015);
@@ -673,6 +750,7 @@ export class GameAudio {
   ui(kind) {
     if (!this.ready()) return;
     const t = this.ctx.currentTime, d = this.out(null, { ui: true });
+    if (['start', 'end', 'spawn', 'chat'].includes(kind) && this.sam('ui_' + kind, d, t, 0.8, 0)) return;
     if (kind === 'hover') this.tone(d, t, { type: 'sine', f0: 1500, dur: 0.025, gain: 0.04 });
     else if (kind === 'chat') { this.tone(d, t, { type: 'sine', f0: 1200, dur: 0.05, gain: 0.08 }); this.tone(d, t + 0.05, { type: 'sine', f0: 1600, dur: 0.06, gain: 0.07 }); }
     else if (kind === 'start') { [523, 659, 784].forEach((f, i) => this.tone(d, t + i * 0.12, { type: 'triangle', f0: f, dur: 0.22, gain: 0.15 })); }
@@ -683,6 +761,7 @@ export class GameAudio {
   announce(level) {
     if (!this.ready()) return;
     const t = this.ctx.currentTime, d = this.out(null, { ui: true, rev: 0.3 });
+    if (this.sam('streak', d, t, 0.9, 0)) return;
     const base = [660, 784, 880, 988, 1175];
     for (let i = 0; i <= Math.min(4, level); i++) this.tone(d, t + i * 0.07, { type: 'triangle', f0: base[i], dur: 0.25, gain: 0.12 });
   }

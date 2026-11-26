@@ -1,0 +1,28 @@
+PACOTE PROFISSIONAL — CRÉDITOS E LICENÇAS
+=========================================
+
+Todos os arquivos deste pacote são CC0 (domínio público, uso livre, sem
+necessidade de atribuição). Mesmo assim, os autores merecem o crédito:
+
+Tiros: "The Free Firearm Sound Library" (Prepared SFX Library), de Ben
+  Jaszczak, Brian Nelson, Kevin Heras e Matthew Nanney.
+  https://opengameart.org/content/the-free-firearm-sound-library
+  Os disparos foram cortados, convertidos para mono 44,1 kHz e normalizados.
+  Arma do jogo → gravação original:
+    glock → Walther PPQ (9 mm)        p250 → Bersa (.380)
+    fiveseven → Ruger Single Six      deagle → Colt 1911 (.45, tom mais grave)
+    rev38 → Smith & Wesson 642 (.38)  usps → Ruger Mark III (.22, abafado)
+    p90 / ump45 → Carl Gustav M45     mp5sd → Carl Gustav M45 (abafado)
+    mac10 → PPSh-41                   ak47 / m249 → AK-47
+    m4a1 / aug / famas → AR-15        galil → SKS (7.62x39)
+    awp → Mosin Nagant (7.62x54R)     ssg08 → Tikka T3 (.30-06)
+    xm1014 → Winchester Model 12 e Charles Daly
+    nova → Benelli Nova
+  Arquivos *_far_* são a mesma arma gravada a média distância (ouvida de longe).
+
+explosion.mp3: "Chunky Explosion", de Joth.
+  https://opengameart.org/content/chunky-explosion
+mine.flac: "Dull explosion", de qubodup.
+  https://opengameart.org/content/dull-explosion
+flashbang.wav: "flash bang sound", de teeeece.
+  https://opengameart.org/content/flash-bang-sound

@@ -110,6 +110,7 @@ class Game {
     this.effects = new Effects(this.scene, q);
     this.audio = new GameAudio(settings);
     this.audio.occlusion = (pos) => this.occluded(pos);
+    window.addEventListener('focus', () => this.audio.refresh());
     this.effects.onBounce = (p, kind) => this.audio.bounce(p, kind);
     // brilho do lugar (marcas de bala não ficam "acesas" em salas escuras)
     const lightTmp = { sky: 1, lamp: [0, 0, 0] };
@@ -322,6 +323,7 @@ class Game {
       this.myId = m.id; this.hostId = m.host; this.joined = true;
       net.autoReconnect = false;
       this.matchSettings = m.settings; this.match = m.match;
+      this.audio.setPack(m.settings.soundPack);
       if (m.match.ts) this.teamScore = m.match.ts;
       for (const p of m.players) this.addPlayer(p);
       this.refreshTeams();
@@ -439,6 +441,7 @@ class Game {
       const prevMode = this.matchSettings && this.matchSettings.mode;
       this.match = m.match;
       this.matchSettings = m.settings;
+      this.audio.setPack(m.settings.soundPack);
       if (m.match.ts) this.teamScore = m.match.ts;
       if (prevMode !== m.settings.mode) this.refreshTeams();
       if (this.room.visible) this.room.render();

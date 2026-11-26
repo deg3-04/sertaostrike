@@ -1,0 +1,14 @@
+TIROS: FUZIS E METRALHADORA
+===========================
+
+Grave cada som abaixo e salve NESTA PASTA com o nome indicado.
+Para ter variações (o jogo sorteia uma a cada vez), use _2, _3... até _5.
+Formatos aceitos: .wav, .mp3, .ogg, .m4a, .webm ou .flac.
+
+ARQUIVO      SOM                              COMO GRAVAR
+ak47_1.wav   AK-47                            PÁ! (um tiro só)
+m4a1_1.wav   M4A1                             pá!
+aug_1.wav    AUG                              pá!
+galil_1.wav  Galil AR                         pá!
+famas_1.wav  FAMAS                            pá!
+m249_1.wav   M249                             TÁ! (um tiro só)
