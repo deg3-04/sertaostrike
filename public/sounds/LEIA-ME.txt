@@ -1,0 +1,27 @@
+SONS REAIS (OPCIONAL)
+=====================
+
+Sem nada nesta pasta, o jogo usa os sons gerados por ele mesmo.
+Para usar gravações reais, coloque aqui arquivos .ogg, .mp3 ou .wav com o
+nome da arma. Reinicie a página (não precisa reiniciar o servidor).
+
+  ak47   m4a1   aug   awp   ssg08   p90   mp5sd   ump45   xm1014
+  glock  usps   deagle   fiveseven
+  explosion   (granada explosiva)
+  mine        (mina terrestre; se faltar, usa explosion)
+
+Vários arquivos da mesma arma viram variações sorteadas a cada tiro:
+  ak47_1.ogg, ak47_2.ogg, ak47_3.ogg
+
+Dicas:
+- Use só o disparo (sem eco longo): o jogo já coloca o eco do lugar,
+  o abafamento atrás das paredes e o atraso do som pela distância.
+- Corte o silêncio do começo do arquivo, senão o tiro sai atrasado.
+- Mono e curto (até ~1 s) fica mais leve.
+
+Onde achar gravações reais com licença livre (CC0, uso sem atribuição):
+- "The Free Firearm Sound Library" (OpenGameArt):
+  https://opengameart.org/content/the-free-firearm-sound-library
+- "Snake's Authentic Gun Sounds" (itch.io), confira a licença na página:
+  https://f8studios.itch.io/snakes-authentic-gun-sounds
+Confira sempre a licença de cada pacote antes de distribuir o jogo.

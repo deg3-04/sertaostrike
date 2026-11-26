@@ -1,0 +1,21 @@
+{
+  "name": "sertao-strike",
+  "version": "1.4.0",
+  "description": "FPS multiplayer leve para rede local (estilo CS)",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js"
+  },
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "ws": "^8.23.0"
+  },
+  "type": "module",
+  "devDependencies": {
+    "three": "^0.187.0"
+  },
+  "engines": {
+    "node": ">=16"
+  }
+}
