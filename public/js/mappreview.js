@@ -21,18 +21,25 @@ export function mapPreview(id, size = 260) {
   const X = (x) => pad + (x - B.minX) * s, Z = (z) => pad + (z - B.minZ) * s;
   // chão: cor do tema (terra/grama ou concreto)
   const gt = th.groundTint || th.grassTint || [0.75, 0.68, 0.5];
-  const base = th.ground === 'concrete' ? [0.62 * gt[0] + 0.25, 0.62 * gt[1] + 0.25, 0.62 * gt[2] + 0.25] : [gt[0] * 0.95, gt[1] * 0.85, gt[2] * 0.7];
+  const base = th.ground === 'snow' ? [0.93, 0.95, 0.97] : th.ground === 'concrete' ? [0.62 * gt[0] + 0.25, 0.62 * gt[1] + 0.25, 0.62 * gt[2] + 0.25] : [gt[0] * 0.95, gt[1] * 0.85, gt[2] * 0.7];
   g.fillStyle = `rgb(${base.map((v) => Math.round(Math.min(1, v) * 255)).join(',')})`;
   g.fillRect(0, 0, cw, ch);
   const tints = th.tints || [];
-  const boxes = map.boxes.filter((b) => !b.floor && !b.hidden && !b.trim && b.min[1] < 2.5).sort((a, b) => a.max[1] - b.max[1]);
+  // relevo: mais claro = mais alto
+  for (const b of map.boxes) {
+    if (!b.terrain) continue;
+    g.fillStyle = `rgba(${th.ground === 'snow' ? '120,140,165' : '255,255,255'},${Math.min(0.55, 0.05 * (b.max[1] / 0.4))})`;
+    g.fillRect(X(b.min[0]), Z(b.min[2]), Math.max(1, (b.max[0] - b.min[0]) * s), Math.max(1, (b.max[2] - b.min[2]) * s));
+  }
+  const boxes = map.boxes.filter((b) => !b.floor && !b.hidden && !b.trim && !b.terrain && b.min[1] - (b.base || 0) < 2.5).sort((a, b) => a.max[1] - b.max[1]);
   for (const b of boxes) {
     const x = X(b.min[0]), y = Z(b.min[2]), w = Math.max(1, (b.max[0] - b.min[0]) * s), h = Math.max(1, (b.max[2] - b.min[2]) * s);
-    const top = b.max[1];
+    const top = b.max[1] - (b.base || 0);
     let col;
     if (b.boundary) col = '#2b2f36';
     else if (top > 2.9) col = b.tint != null && tints[b.tint] ? shade(tints[b.tint], 0.55) : b.mat === 'brick' ? '#6e3a2c' : '#3d424b';
     else if (b.mat === 'metal') col = b.tint != null && tints[b.tint] ? shade(tints[b.tint], 0.8) : '#5a6470';  // contêiner
+    else if (b.mat === 'ice') col = '#bfe0f0';
     else if (b.stair) col = '#9a958c';
     else if (top > 1.2) col = b.mat === 'crate' || b.mat === 'wood' || b.mat === 'door' ? '#8a6a3a' : '#8c8a84';
     else col = b.mat === 'stone' ? '#a49c8c' : '#9a7a4a';

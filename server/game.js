@@ -3,7 +3,7 @@
 // placar, critérios de desempate e bots.
 import { performance } from 'node:perf_hooks';
 import { WEAPONS, PRIMARIES, SECONDARIES, WEAPON_INDEX, cycleTime } from '../shared/weapons.js';
-import { DAMAGE_SCALE, PLAYER, NET, GRENADE, MINE, DEFAULT_MATCH, MATCH_LIMITS, CHARACTERS, HIT_ZONES, FLAG, clamp, VERSION, GAME_NAME, TEAMS, TEAM_CODE, GUNGAME_LIST, HALF_STEP_KEYS, MODE_IDS, isTeamModeId, CTF } from '../shared/constants.js';
+import { DAMAGE_SCALE, PLAYER, NET, GRENADE, MINE, DEFAULT_MATCH, MATCH_LIMITS, CHARACTERS, HIT_ZONES, FLAG, clamp, VERSION, GAME_NAME, TEAMS, TEAM_CODE, GUNGAME_LIST, HALF_STEP_KEYS, MODE_IDS, isTeamModeId, CTF, SCORE } from '../shared/constants.js';
 import { getMap, MAP_LIST } from '../shared/maps.js';
 import { SOUND_PACK_IDS } from '../shared/sounds.js';
 import { floorHeightAt, createGrenadeSim, stepGrenade, lineOfSight, playerCenter, playerHead, eyeHeight, raycastWorld, makeRng } from '../shared/physics.js';
@@ -194,7 +194,7 @@ export class Game {
       weapon: 'knife', inv: {}, nades: { he: 0, flash: 0, smoke: 0, mine: 0 },
       hp: 100, armor: 0, helmet: false, protectedUntil: 0,
       lastShot: {}, lastKnife: 0, lastThrow: -10, reloading: null, deployUntil: 0, lastShotAt: 0,
-      stats: { kills: 0, deaths: 0, hs: 0, dmg: 0, suicides: 0, score: 0, lastScoreAt: 0, shots: 0, hits: 0 },
+      stats: { kills: 0, deaths: 0, hs: 0, dmg: 0, suicides: 0, score: 0, lastScoreAt: 0, shots: 0, hits: 0, caps: 0, assists: 0 },
       history: [], ping: 0, lastUpdateAt: t, blindUntil: 0, lastAttacker: null,
       team: null, streak: 0, gg: 0,
       pick: o.pick || null,  // time escolhido na sala ('ct' | 'tr' | null = automático)
@@ -213,7 +213,7 @@ export class Game {
   }
   statsRow(p) {
     const s = p.stats;
-    return [p.id, s.score, s.kills, s.deaths, s.hs, Math.round(s.dmg), p.bot ? -1 : p.ping, p.alive ? 1 : 0, TEAM_CODE[p.team] || 0, p.streak, p.gg, s.caps || 0];
+    return [p.id, s.score, s.kills, s.deaths, s.hs, Math.round(s.dmg), p.bot ? -1 : p.ping, p.alive ? 1 : 0, TEAM_CODE[p.team] || 0, p.streak, p.gg, s.caps || 0, s.assists || 0];
   }
 
   join(ws, m) {
@@ -448,6 +448,7 @@ export class Game {
     p.deployUntil = t + 0.3;
     p.respawnAt = 0;
     p.lastAttacker = null;
+    p.dmgBy = {};
     if (p.bot) p.brain.onSpawn();
     const inv = {};
     for (const [k, v] of Object.entries(p.inv)) inv[k] = [v.mag, v.res];
@@ -665,6 +666,7 @@ export class Game {
     attacker.stats.dmg += total;
     attacker.stats.hits++;
     victim.lastAttacker = attacker.id;
+    (victim.dmgBy || (victim.dmgBy = {}))[attacker.id] = (victim.dmgBy[attacker.id] || 0) + total;
     const killed = victim.hp <= 0;
     this.send(attacker, { t: 'hit', v: victim.id, dmg: total, z: zoneBest, k: killed ? 1 : 0, hm: victim.helmet && zoneBest === 'head' ? 1 : 0 });
     this.send(victim, { t: 'hurt', a: attacker.id, dmg: total, hp: Math.max(0, victim.hp), ar: victim.armor, z: zoneBest, from: [r2(origin[0]), r2(origin[1]), r2(origin[2])] });
@@ -857,7 +859,7 @@ export class Game {
       v.armor = Math.max(0, v.armor - Math.round(armorLoss));
       const dealt = Math.min(v.hp, real);
       v.hp -= real;
-      if (attacker !== v) { attacker.stats.dmg += dealt; this.send(attacker, { t: 'hit', v: v.id, dmg: dealt, z: 'chest', k: v.hp <= 0 ? 1 : 0, nade: 1 }); }
+      if (attacker !== v) { attacker.stats.dmg += dealt; (v.dmgBy || (v.dmgBy = {}))[attacker.id] = (v.dmgBy[attacker.id] || 0) + dealt; this.send(attacker, { t: 'hit', v: v.id, dmg: dealt, z: 'chest', k: v.hp <= 0 ? 1 : 0, nade: 1 }); }
       this.send(v, { t: 'hurt', a: attacker.id, dmg: dealt, hp: Math.max(0, v.hp), ar: v.armor, z: 'chest', from: o.map(r2), nade: 1 });
       if (v.hp <= 0) this.killPlayer(v, attacker, wid, {});
     }
@@ -983,23 +985,26 @@ export class Game {
     victim.scoped = false;
     victim.respawnAt = t + Math.max(0.35, this.settings.respawnTime);
     victim.stats.deaths++;
+    const victimStreak = victim.streak || 0;
     victim.streak = 0;
+    const dmgBy = victim.dmgBy || {};
+    victim.dmgBy = {};
+    let pts = 0; const ptsWhy = [];
     const suicide = !killer || killer === victim;
     const tk = !suicide && this.sameTeam(killer, victim);
     const gg = this.settings.mode === 'gungame';
     let ggUp = false, ggWin = false, multi = 0;
     if (suicide) {
       victim.stats.suicides++;
-      victim.stats.score--;
+      victim.stats.score += SCORE.suicide;
       victim.stats.lastScoreAt = t;
       if (gg && victim.gg > 0 && this.phase === 'live') victim.gg--;
     } else if (tk) {
-      killer.stats.score--;
+      killer.stats.score += SCORE.teamkill;
       killer.stats.lastScoreAt = t;
       if (this.tscore && killer.team && !this.isCtf()) this.tscore[killer.team]--;
     } else {
       killer.stats.kills++;
-      killer.stats.score++;
       killer.stats.lastScoreAt = t;
       if (flags.hs) killer.stats.hs++;
       killer.streak++;
@@ -1007,6 +1012,22 @@ export class Game {
       killer.multi = t - (killer.lastKillAt || -99) <= 4 ? (killer.multi || 1) + 1 : 1;
       killer.lastKillAt = t;
       multi = killer.multi;
+      // pontos do abate e bônus
+      pts = SCORE.kill; ptsWhy.push('Abate');
+      if (flags.hs) { pts += SCORE.headshot; ptsWhy.push('Na cabeça'); }
+      if (wid === 'knife') { pts += SCORE.knife; ptsWhy.push('Faca'); }
+      if (wid === 'he' || wid === 'mine') { pts += SCORE.explosive; ptsWhy.push('Explosivo'); }
+      if (multi >= 2) { pts += SCORE.multi * (multi - 1); ptsWhy.push('Sequência'); }
+      if (victimStreak >= SCORE.shutdownMin) { pts += SCORE.shutdown; ptsWhy.push('Fim da sequência'); }
+      killer.stats.score += pts;
+      // assistências: quem também machucou a vítima
+      for (const [aid, d] of Object.entries(dmgBy)) {
+        const a = this.players.get(+aid);
+        if (!a || a === killer || a === victim || d < SCORE.assistMinDmg || this.sameTeam(a, victim)) continue;
+        a.stats.assists = (a.stats.assists || 0) + 1;
+        a.stats.score += SCORE.assist;
+        this.send(a, { t: 'pts', n: SCORE.assist, w: 'Assistência' });
+      }
       if (this.isTeamMode() && killer.team && !this.isCtf()) this.tscore[killer.team]++;
       if (gg) {
         // Gun Game: sobe de nível ao matar com a arma do nível; facada rouba um nível da vítima
@@ -1022,10 +1043,11 @@ export class Game {
       t: 'kill', k: suicide ? victim.id : killer.id, v: victim.id, w: wid,
       hs: flags.hs ? 1 : 0, pen: flags.pen ? 1 : 0, sm: flags.smoke ? 1 : 0, air: flags.air ? 1 : 0, ns: flags.ns ? 1 : 0,
       tk: tk ? 1 : 0, ks: suicide ? null : this.statsRow(killer), vs: this.statsRow(victim), mk: multi >= 2 ? multi : 0,
-      kst: suicide || tk ? 0 : killer.streak,
+      kst: suicide || tk ? 0 : killer.streak, pts,
       kh: suicide ? 0 : killer.hp, ka: suicide ? 0 : killer.armor,
       rs: this.settings.respawnTime, ts: this.tscore,
     });
+    if (!suicide && !tk) this.send(killer, { t: 'pts', n: pts, w: ptsWhy.join(' + ') });
     if (!suicide && !tk && killer.alive) this.rewardKill(killer, ggUp && !ggWin, multi);
     if (this.phase === 'live' && !suicide) {
       const lim = this.settings.endCondition;
@@ -1034,7 +1056,7 @@ export class Game {
         if (this.isCtf()) { /* em Capture a Bandeira a meta é de capturas */ }
         else if (this.isTeamMode()) {
           if (Math.max(this.tscore.ct, this.tscore.tr) >= this.settings.teamKillLimit) this.endMatch('kills');
-        } else if (killer.stats.score >= this.settings.killLimit) this.endMatch('kills');
+        } else if (killer.stats.kills >= this.settings.killLimit) this.endMatch('kills');
       }
     }
     if (this.phase === 'live' && this.suddenDeath) this.checkSudden();
@@ -1219,7 +1241,7 @@ export class Game {
 
   resetStats() {
     for (const p of this.players.values()) {
-      p.stats = { kills: 0, deaths: 0, hs: 0, dmg: 0, suicides: 0, score: 0, lastScoreAt: 0, shots: 0, hits: 0, caps: 0 };
+      p.stats = { kills: 0, deaths: 0, hs: 0, dmg: 0, suicides: 0, score: 0, lastScoreAt: 0, shots: 0, hits: 0, caps: 0, assists: 0 };
       p.streak = 0; p.gg = 0;
     }
     this.tscore = { ct: 0, tr: 0 };
@@ -1558,6 +1580,7 @@ export class Game {
       if (own.s === 2 && near(p.pos, own.p, CTF.touchRadius)) {
         own.s = 0; own.p = this.flagBase(p.team); own.c = null;
         p.stats.score += CTF.returnScore; p.stats.lastScoreAt = t;
+        this.send(p, { t: 'pts', n: CTF.returnScore, w: 'Bandeira devolvida' });
         this.flagEvent('return', p.team, p);
         this.system(`${p.name} devolveu a bandeira dos ${TEAMS[p.team].name}.`);
       }
@@ -1573,6 +1596,7 @@ export class Game {
         this.tscore[p.team]++;
         p.stats.caps = (p.stats.caps || 0) + 1;
         p.stats.score += CTF.captureScore; p.stats.lastScoreAt = t;
+        this.send(p, { t: 'pts', n: CTF.captureScore, w: 'Captura' });
         this.flagEvent('cap', enemyTeam, p);
         this.system(`${p.name} capturou a bandeira! ${TEAMS.ct.name} ${this.tscore.ct} × ${this.tscore.tr} ${TEAMS.tr.name}`);
         const lim = this.settings.endCondition;

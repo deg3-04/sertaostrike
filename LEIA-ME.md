@@ -19,7 +19,8 @@ Jogo de tiro em primeira pessoa no estilo Counter-Strike, leve e feito para joga
 - **9 personagens** (incluindo o chimpanzé João, o padre Lincuzinho, de batina e tonsura, e o Will, de óculos) e escolha do **lado de renascimento**. O tempo de renascimento e a proteção ao renascer são configuráveis.
 - **Killfeed** no canto superior esquerdo com ícones de headshot, tiro através da parede, através da fumaça, no ar e sem luneta.
 - **Bots** para completar a partida quando há pouca gente (fácil, normal ou difícil).
-- **4 mapas** (o anfitrião troca em ESC › Configurar partida › Mapa):
+- **Vários mapas** (o anfitrião troca em ESC › Configurar partida › Mapa), entre eles:
+  - **Vale Gelado** (grande, 128 × 128 m): vale de neve com relevo. Cada base fica num platô alto (4 m) com cabanas e uma torre de vigia; as encostas descem até um vale com um riacho congelado, um caminhão abandonado e dois morrinhos; nos flancos há cristas de pedra a 5,2 m (sobe-se por escadas) que dominam o vale. Neve caindo, pinheiros e montanhas nevadas ao fundo. Bom para fuzis e para quem gosta de terreno alto.
   - **Vila Sertão**: vila nordestina com casas coloniais coloridas, igreja, praça com chafariz, bandeirinhas e mandacarus. Mais aberto, com linhas longas para rifles.
   - **Porto Delta**: porto industrial com contêineres no layout clássico de CS: base CT e base TR, bombsites A e B, meio com portas de madeira, "long" com portas, túneis cobertos e passarela elevada (short A). Mais fechado e rápido, com muitos ângulos e combates de curta e média distância.
   - **Galpão 7** (compacto, 48 × 48 m): pátios abertos ao norte e ao sul, galpão coberto no centro com contêineres e pilares, doca a céu aberto com plataforma elevada a oeste e escritórios com corredor estreito e salas a leste, ligados ao galpão por portas e janelas.
@@ -119,7 +120,19 @@ Todas as teclas podem ser trocadas em **Opções › Teclas**.
 
 ### Fim da partida e desempate
 - **Por tempo**, **por abates** ou **o que vier primeiro** (padrão: 10 minutos ou 30 abates).
-- **Pontos** = abates − suicídios (morrer com a própria granada tira 1 ponto). Em equipe, abater um aliado (só com fogo amigo ligado) também tira 1 ponto.
+- **Pontos** (estilo FPS de PC clássico, cada ação vale pontos e aparecem logo abaixo da mira):
+  | Ação | Pontos |
+  |---|---|
+  | Abate | 100 |
+  | Tiro na cabeça (bônus) | +50 |
+  | Abate de faca (bônus) | +50 |
+  | Abate com granada ou mina (bônus) | +25 |
+  | Abate em sequência (bônus por abate extra: duplo +50, triplo +100...) | +50 cada |
+  | Derrubar quem tinha 3+ abates seguidos | +50 |
+  | Assistência (40+ de dano em quem outro abateu) | 50 |
+  | Capturar a bandeira / devolver a sua | 500 / 100 |
+  | Suicídio / abater aliado | −100 / −200 |
+- O **placar** (tecla do placar, padrão Tab) ordena por pontos e mostra abates (A), mortes (M), assistências (AS), pontos e ping. Em equipe, as duas equipes ficam lado a lado com o placar de cada uma em destaque; embaixo aparecem os seus números (posição, K/D, % de headshots, dano, sequência). O **limite de abates** da partida continua contando abates, não pontos.
 - **Em equipe**, o placar mostra as duas equipes lado a lado e o total de cada uma no topo da tela. Aliados aparecem no radar e com um marcador colorido sobre a cabeça.
 - **No Gun Game**, o placar ordena por nível; o limite de abates não vale (vence quem completar as armas, ou quem estiver no nível mais alto quando o tempo acabar).
 - **Critério de desempate** (configurável):

@@ -136,7 +136,7 @@ export function bakeGeometry(geo, grid, lamps, cache) {
 }
 
 // grade de luz para personagens: céu visível e luz de lâmpada a ~1,3 m do chão
-export function buildLightGrid(grid, lamps, bounds) {
+export function buildLightGrid(grid, lamps, bounds, terrainAt = null) {
   const cs = 1.0;
   const x0 = bounds.minX, z0 = bounds.minZ;
   const nx = Math.ceil((bounds.maxX - bounds.minX) / cs) + 1, nz = Math.ceil((bounds.maxZ - bounds.minZ) / cs) + 1;
@@ -145,7 +145,8 @@ export function buildLightGrid(grid, lamps, bounds) {
   const LEVELS = [1.3, 3.0];
   for (let li = 0; li < 2; li++) {
     for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) {
-      const p = [x0 + i * cs, LEVELS[li], z0 + j * cs];
+      const px = x0 + i * cs, pz = z0 + j * cs;
+      const p = [px, LEVELS[li] + (terrainAt ? terrainAt(Math.min(bounds.maxX - 0.01, px), Math.min(bounds.maxZ - 0.01, pz)) : 0), pz];
       const k = (li * nz + j) * nx + i;
       sky[k] = skyVisibility(grid, p, [0, 1, 0]);
       lampLight(grid, lamps, p, null, tmp);
@@ -157,7 +158,7 @@ export function buildLightGrid(grid, lamps, bounds) {
     sample(x, y, z, out) {
       const fx = Math.max(0, Math.min(nx - 1.001, (x - x0) / cs)), fz = Math.max(0, Math.min(nz - 1.001, (z - z0) / cs));
       const i = Math.floor(fx), j = Math.floor(fz), tx = fx - i, tz = fz - j;
-      const lv = y > 2.2 ? 1 : 0;
+      const lv = y - (terrainAt ? terrainAt(x, z) : 0) > 2.2 ? 1 : 0;
       const at = (ii, jj) => (lv * nz + jj) * nx + ii;
       const a = at(i, j), b = at(i + 1, j), c = at(i, j + 1), d = at(i + 1, j + 1);
       const w = [(1 - tx) * (1 - tz), tx * (1 - tz), (1 - tx) * tz, tx * tz];

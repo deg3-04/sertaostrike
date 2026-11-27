@@ -2,7 +2,7 @@
 // coloniais (janelas, portas, cornijas, telhados), decoração (palmeiras,
 // mandacarus, bandeirinhas), céu, montanhas, luzes e neblina.
 import * as THREE from '/lib/three.js';
-import { getTextures } from './textures.js';
+import { getTextures, getSnowTexture } from './textures.js';
 import { OccGrid, bakeGeometry, buildLightGrid, installBakedLighting } from './lighting.js';
 import { signAtlas, addSigns, addCables, buildScatter } from './decor.js';
 
@@ -633,7 +633,8 @@ function makeSky(theme) {
   return sky;
 }
 
-function makeMountains() {
+function makeMountains(theme = {}) {
+  const snowy = theme.ground === 'snow';
   const mb = new MeshBuilder();
   const segs = 140;
   const r = rng(4242);
@@ -654,7 +655,7 @@ function makeMountains() {
     for (let k = 0; k < rings.length - 1; k++) {
       const a = ring(i, k), b = ring(i + 1, k), c = ring(i + 1, k + 1), d = ring(i, k + 1);
       const shade = 0.75 + smooth[i] * 0.3;
-      const col = mulc(col3(k === 0 ? 0xb58a5a : 0x8f7a6a), shade);
+      const col = mulc(col3(snowy ? (k === 0 ? 0xe4eaf0 : 0x9aa4ae) : (k === 0 ? 0xb58a5a : 0x8f7a6a)), shade);
       const v1 = new THREE.Vector3(b[0] - a[0], b[1] - a[1], b[2] - a[2]), v2 = new THREE.Vector3(d[0] - a[0], d[1] - a[1], d[2] - a[2]);
       const n = v2.clone().cross(v1).normalize();
       if (n.y < 0) n.negate();
@@ -664,6 +665,57 @@ function makeMountains() {
   const g = mb.build();
   const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, flatShading: true, side: THREE.DoubleSide }));
   return m;
+}
+
+// pinheiro com neve: tronco e 4 "saias" de galhos, mais brancas no alto
+function buildPine(fol, plain, p) {
+  const y = p.y || 0, h = p.h || 7;
+  const r = rng(Math.floor(p.x * 13 + p.z * 29) + 7);
+  plain.geo(new THREE.CylinderGeometry(0.14, 0.24, h * 0.4, 8), new THREE.Matrix4().makeTranslation(p.x, y + h * 0.2, p.z), col3(0x4a3424));
+  const green = col3(0x2f4a33), dark = col3(0x22362a), snow = col3(0xeef3f7);
+  const tiers = 4;
+  for (let i = 0; i < tiers; i++) {
+    const f = i / tiers;
+    const rad = (1.9 - f * 1.35) * (h / 7) * (0.9 + r() * 0.2);
+    const th = h * 0.36;
+    const cy = y + h * 0.22 + f * h * 0.58 + th / 2;
+    const g = new THREE.ConeGeometry(rad, th, 9, 2, true);
+    const m = new THREE.Matrix4().makeRotationY(r() * 3).setPosition(p.x, cy, p.z);
+    fol.geo(g, m, (x, yy, z) => {
+      const up = (yy - (cy - th / 2)) / th; // 0 embaixo, 1 no topo do cone
+      const side = Math.sin(Math.atan2(z - p.z, x - p.x) * 3 + i) > 0.2;
+      return up > 0.55 || (up > 0.25 && side) ? snow : side ? green : dark;
+    });
+    g.dispose();
+  }
+}
+
+// neve caindo em volta da câmera (partículas recicladas, custo baixo)
+function makeSnowfall(tex) {
+  const N = 1600, R = 22, Hh = 16;
+  const pos = new Float32Array(N * 3), seed = new Float32Array(N * 3);
+  for (let i = 0; i < N; i++) { seed[i * 3] = Math.random() * R * 2; seed[i * 3 + 1] = Math.random() * Hh; seed[i * 3 + 2] = Math.random() * R * 2; }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  const mat = new THREE.PointsMaterial({ map: tex.soft, color: 0xffffff, size: 0.11, sizeAttenuation: true, transparent: true, opacity: 0.85, depthWrite: false });
+  const points = new THREE.Points(g, mat);
+  points.frustumCulled = false;
+  points.renderOrder = 5;
+  const md = (a, m) => ((a % m) + m) % m;
+  return {
+    points,
+    update(t, cam) {
+      const fall = t * 1.1, drift = t * 0.6;
+      for (let i = 0; i < N; i++) {
+        const sx = seed[i * 3], sy = seed[i * 3 + 1], sz = seed[i * 3 + 2];
+        const wob = Math.sin(t * 1.3 + sy * 2.1) * 0.35;
+        pos[i * 3] = cam.x - R + md(sx + drift + wob - cam.x, R * 2);
+        pos[i * 3 + 1] = cam.y - 4 + md(sy - fall * (0.8 + (i % 5) * 0.08), Hh);
+        pos[i * 3 + 2] = cam.z - R + md(sz + drift * 0.4 - cam.z, R * 2);
+      }
+      g.attributes.position.needsUpdate = true;
+    },
+  };
 }
 
 function makeClouds(tex) {
@@ -686,6 +738,12 @@ export function buildWorld(scene, map, qualityCfg) {
   const tex = getTextures();
   const mats = makeMaterials(tex);
   const theme = map.theme;
+  // neve e gelo (só nos mapas de inverno)
+  if (theme.ground === 'snow' || map.boxes.some((b) => b.mat === 'snow')) {
+    const st = getSnowTexture();
+    mats.snow = new THREE.MeshStandardMaterial({ map: st.map, normalMap: st.normalMap, normalScale: new THREE.Vector2(0.6, 0.6), vertexColors: true, roughness: 0.82, metalness: 0 });
+  }
+  mats.ice = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.1, metalness: 0.2 });
   const group = new THREE.Group();
   group.name = 'world';
   const windU = { uTime: { value: 0 } };
@@ -714,7 +772,7 @@ export function buildWorld(scene, map, qualityCfg) {
     let key = b.mat, o = { ao: true, sub: 1.6 };
     switch (b.mat) {
       case 'plaster': o = { ...o, su: 4, sv: 8, color: wallColorOf(b) }; break;
-      case 'stone': o = { ...o, su: 2, sv: 2, color: WHITE }; break;
+      case 'stone': o = { ...o, su: 2, sv: 2, color: theme.stoneTint ? col3(theme.stoneTint) : WHITE }; break;
       case 'wall': o = { ...o, su: 3, sv: 3, color: WHITE }; break;
       case 'brick': o = { ...o, su: 2, sv: 2, color: WHITE }; break;
       case 'concrete': o = { ...o, su: 2, sv: 2, color: WHITE }; break;
@@ -722,6 +780,8 @@ export function buildWorld(scene, map, qualityCfg) {
       case 'crate': o = { faceUV: true, sub: 0, color: mulc(WHITE, 0.92 + ((b.id * 37) % 10) / 60) }; break;
       case 'door': o = { faceUV: true, color: col3(['#2e5d8a', '#2f6f4e', '#8a3a2e'][b.id % 3]) }; break;
       case 'metal': o = { su: 2, sv: 2, color: b.tint != null ? wallColorOf(b) : col3(0x9aa0a6) }; break;
+      case 'snow': o = { ...o, su: 4, sv: 4, color: WHITE, ao: false, sub: b.terrain ? 4 : 1.6 }; break;
+      case 'ice': o = { su: 4, color: col3(0xc9e6f5) }; break;
       default: key = 'plain'; o = { su: 2, color: WHITE };
     }
     const covered = [];
@@ -806,6 +866,7 @@ export function buildWorld(scene, map, qualityCfg) {
     switch (p.type) {
       case 'palm': buildPalm(mbOf('plain'), mbOf('foliage'), p); break;
       case 'cactus': buildCactus(mbOf('plain'), p); break;
+      case 'pine': buildPine(mbOf('foliage'), mbOf('plain'), p); break;
       case 'bunting': buildBunting(mbOf('plain'), mbOf('cloth'), p); break;
       case 'awning': buildAwning(mbOf('cloth'), mbOf('wood'), p, tex); break;
       case 'cart': buildCart(mbOf('wood'), mbOf('plain'), p); break;
@@ -876,7 +937,7 @@ export function buildWorld(scene, map, qualityCfg) {
   }
   // luz emissiva das lanternas
   mats.glass.emissive = new THREE.Color(0x000000);
-  const lightGrid = buildLightGrid(occ, lamps, map.bounds);
+  const lightGrid = buildLightGrid(occ, lamps, map.bounds, map.terrainAt || null);
   console.log(`iluminação pré-calculada em ${(performance.now() - bakeT0).toFixed(0)} ms (${lamps.length} lâmpadas, ${bakeCache.size} pontos)`);
   // entulho, papéis e grama (instanciados; só qualidade média ou maior)
   const scatter = buildScatter(map, theme, qualityCfg, (x, y, z, o) => lightGrid.sample(x, y, z, o), windU);
@@ -902,7 +963,9 @@ export function buildWorld(scene, map, qualityCfg) {
   // ---------------- céu, montanhas, nuvens
   const sky = makeSky(theme);
   group.add(sky);
-  group.add(makeMountains());
+  group.add(makeMountains(theme));
+  const snowfall = theme.snowfall && qualityCfg.decor !== false ? makeSnowfall(tex) : null;
+  if (snowfall) group.add(snowfall.points);
   void makeClouds;
 
   // ---------------- luzes
@@ -956,6 +1019,7 @@ export function buildWorld(scene, map, qualityCfg) {
       windU.uTime.value = t;
       sky.material.uniforms.uTime.value = t;
       sky.position.copy(camPos);
+      if (snowfall) snowfall.update(t, camPos);
       // lâmpadas que piscam: ruído com quedas curtas
       const n = Math.sin(t * 13.1) * Math.sin(t * 7.3 + 1.7) + Math.sin(t * 29.7) * 0.3;
       const drop = (Math.sin(t * 0.9) > 0.82 && Math.sin(t * 23) > 0) || (Math.sin(t * 0.37 + 2) > 0.95);

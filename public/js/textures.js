@@ -544,6 +544,38 @@ function stripes(c1, c2) {
   return toTexture(c);
 }
 
+// ------------------------------------------------------------------ neve
+function snowTex(S) {
+  const W = S, H = S;
+  const { c, ctx } = canvas(W, H);
+  const img = ctx.createImageData(W, H), d = img.data;
+  const n1 = fbm(131, 4, 5), n2 = fbm(149, 18, 3), n3 = fbm(163, 2, 3);
+  const hgt = new Float32Array(W * H);
+  const c1 = hex(0xf3f6f9), c2 = hex(0xdfe7ef), c3 = hex(0xffffff), c4 = hex(0xc9d4df);
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const u = x / W, v = y / H;
+    const a = n1(u, v), b = n2(u, v), e = n3(u, v);
+    let col = mix(c1, c2, Math.min(1, Math.max(0, (a - 0.45) * 2.0)));
+    col = mix(col, c3, Math.max(0, (e - 0.5) * 1.6));
+    col = mix(col, c4, Math.max(0, (0.3 - b) * 1.2));
+    const i = (y * W + x) * 4;
+    d[i] = col[0]; d[i + 1] = col[1]; d[i + 2] = col[2]; d[i + 3] = 255;
+    hgt[y * W + x] = a * 0.7 + b * 0.3;
+  }
+  ctx.putImageData(img, 0, 0);
+  // brilhos e pegadas apagadas
+  const r = rng(77);
+  for (let i = 0; i < S * 1.2; i++) { ctx.fillStyle = 'rgba(255,255,255,' + (0.5 + r() * 0.5) + ')'; ctx.fillRect(r() * W, r() * H, 1, 1); }
+  for (let i = 0; i < S * 0.08; i++) {
+    const x = r() * W, y = r() * H;
+    ctx.fillStyle = 'rgba(150,170,195,0.10)';
+    ctx.beginPath(); ctx.ellipse(x, y, 3 + r() * 4, 2 + r() * 2, r() * 3, 0, Math.PI * 2); ctx.fill();
+  }
+  return { map: toTexture(c, { aniso: 8 }), normalMap: normalFromHeight(hgt, W, H, 2.0) };
+}
+let snowCache = null;
+export function getSnowTexture() { return snowCache || (snowCache = snowTex(512)); }
+
 let cache = null;
 export function getTextures() {
   if (cache) return cache;

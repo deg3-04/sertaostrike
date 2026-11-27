@@ -125,8 +125,24 @@ export const CTF = {
   touchRadius: 1.5,    // distância (m) para pegar/devolver a bandeira
   captureRadius: 2.2,  // distância da base para capturar
   returnTime: 25,      // segundos até a bandeira caída voltar sozinha para a base
-  captureScore: 5,     // pontos no placar individual por captura
-  returnScore: 1,      // pontos por devolver a própria bandeira
+  captureScore: 500,   // pontos no placar individual por captura
+  returnScore: 100,    // pontos por devolver a própria bandeira
+};
+
+// Pontuação individual (estilo FPS de PC clássico): cada ação vale pontos.
+// O placar ordena por pontos; o limite de abates da partida continua contando abates.
+export const SCORE = {
+  kill: 100,          // abate
+  headshot: 50,       // bônus: tiro na cabeça
+  knife: 50,          // bônus: abate de faca
+  explosive: 25,      // bônus: abate com granada ou mina
+  multi: 50,          // bônus por abate extra na sequência (duplo +50, triplo +100...)
+  shutdown: 50,       // bônus: derrubar quem estava com 3+ abates seguidos
+  shutdownMin: 3,
+  assist: 50,         // assistência: causou 40+ de dano em quem outro abateu
+  assistMinDmg: 40,
+  suicide: -100,
+  teamkill: -200,
 };
 
 export const TEAMS = {

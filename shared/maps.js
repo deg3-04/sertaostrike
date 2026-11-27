@@ -699,8 +699,186 @@ function buildMercado() {
 }
 
 // --------------------------------------------------------------- registro
-const BUILDERS = { sertao: buildSertao, porto: buildPorto, galpao: buildGalpao, bunker: buildBunker, estacao: buildEstacao, fazenda: buildFazenda, mercado: buildMercado };
+// --------------------------------------------------------------- Vale Gelado
+// Mapa grande (128 × 128 m) de neve, com relevo: cada base fica num platô alto
+// (4 m), as encostas descem até um vale com um riacho congelado no meio, há uma
+// crista alta num dos flancos de cada lado (boa para fuzil de precisão) e dois
+// morrinhos no vale. O relevo é feito de camadas de 0,4 m (sobe-se andando,
+// como degraus suaves). Simétrico por rotação de 180°.
+const VG_STEP = 0.4, VG_CELL = 2, VG_HALF = 64;
+function vgSmooth(a, b, x) { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); }
+// altura contínua do lado norte (o sul é a rotação de 180°)
+function vgNorth(x, z) {
+  // platô da base (4 m) descendo em encosta suave até o vale
+  let h = 4.0 * vgSmooth(10, 44, -z + 3 * Math.sin(x / 11));
+  // morrinho no vale
+  h = Math.max(h, 2.4 * (1 - vgSmooth(2, 11, Math.hypot(x - 22, z + 4))));
+  return h;
+}
+const VG_RIDGE = 13; // crista: 5,2 m
+function vgRidge(x, z) { return x < -47 + 2 * Math.sin(z / 7) && z < 16; }
+function buildVale() {
+  const N = (VG_HALF * 2) / VG_CELL; // 64 células
+  const X0 = -VG_HALF, Z0 = -VG_HALF;
+  const cc = (i) => X0 + (i + 0.5) * VG_CELL;
+  const lv = [];
+  for (let j = 0; j < N; j++) { lv.push([]); for (let i = 0; i < N; i++) { const x = cc(i), z = cc(j); const h = Math.max(vgNorth(x, z), vgNorth(-x, -z)); lv[j].push(h < 0.15 ? 0 : Math.round(h / VG_STEP)); } }
+  // suaviza: vizinhos diferem no máximo 1 nível (0,4 m) para dar para subir andando
+  for (let it = 0; it < 30; it++) for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+    let m = lv[j][i];
+    if (i > 0) m = Math.min(m, lv[j][i - 1] + 1); if (i < N - 1) m = Math.min(m, lv[j][i + 1] + 1);
+    if (j > 0) m = Math.min(m, lv[j - 1][i] + 1); if (j < N - 1) m = Math.min(m, lv[j + 1][i] + 1);
+    lv[j][i] = m;
+  }
+  // cristas nos flancos (paredões de pedra; sobe-se pelas escadas)
+  for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) { const x = cc(i), z = cc(j); if (vgRidge(x, z) || vgRidge(-x, -z)) lv[j][i] = VG_RIDGE; }
+  // garante simetria exata (rotação 180°)
+  for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) { const a = lv[j][i], b = lv[N - 1 - j][N - 1 - i]; lv[j][i] = lv[N - 1 - j][N - 1 - i] = Math.max(a, b); }
+  const boxes = [], props = [], spawns = [];
+  // camadas: para cada nível L, a região com altura >= L vira retângulos
+  let maxL = 0; for (const r of lv) for (const v of r) maxL = Math.max(maxL, v);
+  for (let L = 1; L <= maxL; L++) {
+    const used = lv.map((r) => r.map(() => false));
+    for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+      if (used[j][i] || lv[j][i] < L) continue;
+      let i1 = i; while (i1 + 1 < N && !used[j][i1 + 1] && lv[j][i1 + 1] >= L) i1++;
+      let j1 = j;
+      outer: while (j1 + 1 < N) { for (let k = i; k <= i1; k++) if (used[j1 + 1][k] || lv[j1 + 1][k] < L) break outer; j1++; }
+      for (let a = j; a <= j1; a++) for (let k = i; k <= i1; k++) used[a][k] = true;
+      boxes.push(box(X0 + i * VG_CELL, (L - 1) * VG_STEP, Z0 + j * VG_CELL, X0 + (i1 + 1) * VG_CELL, L * VG_STEP, Z0 + (j1 + 1) * VG_CELL, 'snow', { terrain: true, name: 'Neve' }));
+    }
+  }
+  const ground = (x, z) => {
+    const i = Math.floor((x - X0) / VG_CELL), j = Math.floor((z - Z0) / VG_CELL);
+    if (i < 0 || j < 0 || i >= N || j >= N) return 0;
+    return lv[j][i] * VG_STEP;
+  };
+  // pega a altura mais alta sob um retângulo (objetos não ficam "flutuando" dentro do morro)
+  const groundRect = (x1, z1, x2, z2) => {
+    let h = 0;
+    for (let x = x1; x <= x2 + 1e-6; x += 0.5) for (let z = z1; z <= z2 + 1e-6; z += 0.5) h = Math.max(h, ground(Math.min(x, x2 - 0.01), Math.min(z, z2 - 0.01)));
+    return h;
+  };
+  const S = [], P = []; // metade norte (espelhada no fim)
+  // escadas de pedra para subir na crista (encostadas no paredão, subindo para oeste)
+  const ridgeStairs = (zc) => {
+    const j = Math.floor((zc - Z0) / VG_CELL);
+    let i = 0; while (i < N && lv[j][i] >= VG_RIDGE) i++;
+    const ex = X0 + i * VG_CELL, top = VG_RIDGE * VG_STEP;
+    const foot = ground(ex + 0.5, zc);
+    const n = Math.round((top - foot) / VG_STEP);
+    if (n < 1) return;
+    stairs(S, ex, zc - 1.5, ex + n, zc + 1.5, foot, top, '-x', n, 'stone');
+  };
+  ridgeStairs(-45); ridgeStairs(-15); ridgeStairs(9);
+  const on = (x1, z1, x2, z2, h, mat, o = {}) => { const y = groundRect(x1, z1, x2, z2); const b = box(x1, y - 0.4, z1, x2, y + h, z2, mat, { base: y, ...o }); S.push(b); return y; };
+  const rock = (x, z, w, d, h) => on(x - w / 2, z - d / 2, x + w / 2, z + d / 2, h, 'concrete', { name: 'Rocha', rock: true });
+  const pine = (x, z, h = 7) => { const y = groundRect(x - 0.3, z - 0.3, x + 0.3, z + 0.3); S.push(box(x - 0.28, y - 0.4, z - 0.28, x + 0.28, y + h * 0.75, z + 0.28, 'wood', { name: 'Pinheiro', hidden: true, pen: true })); P.push({ type: 'pine', x, z, y, h }); };
+  // cabana de madeira: paredes com porta e janela, telhado (não dá para subir)
+  const cabin = (x1, z1, x2, z2, door) => {
+    const y = groundRect(x1, z1, x2, z2), t = 0.3, H = 3.0;
+    const wall = (a1, b1, a2, b2) => S.push(box(a1, y - 0.4, b1, a2, y + H, b2, 'wood', { base: y, name: 'Cabana' }));
+    const mx = (x1 + x2) / 2, mz = (z1 + z2) / 2;
+    // norte / sul (com porta no lado indicado)
+    for (const [zz, isDoor] of [[z1, door === 'n'], [z2 - t, door === 's']]) {
+      if (isDoor) { wall(x1, zz, mx - 0.7, zz + t); wall(mx + 0.7, zz, x2, zz + t); S.push(box(mx - 0.7, y + 2.2, zz, mx + 0.7, y + H, zz + t, 'wood', { base: y })); }
+      else { wall(x1, zz, mx - 1.0, zz + t); wall(mx + 1.0, zz, x2, zz + t); S.push(box(mx - 1.0, y - 0.4, zz, mx + 1.0, y + 1.0, zz + t, 'wood', { base: y, name: 'Janela' })); S.push(box(mx - 1.0, y + 2.1, zz, mx + 1.0, y + H, zz + t, 'wood', { base: y })); }
+    }
+    for (const [xx, isDoor] of [[x1, door === 'w'], [x2 - t, door === 'e']]) {
+      if (isDoor) { wall(xx, z1 + t, xx + t, mz - 0.7); wall(xx, mz + 0.7, xx + t, z2 - t); S.push(box(xx, y + 2.2, mz - 0.7, xx + t, y + H, mz + 0.7, 'wood', { base: y })); }
+      else { wall(xx, z1 + t, xx + t, mz - 1.0); wall(xx, mz + 1.0, xx + t, z2 - t); S.push(box(xx, y - 0.4, mz - 1.0, xx + t, y + 1.0, mz + 1.0, 'wood', { base: y, name: 'Janela' })); S.push(box(xx, y + 2.1, mz - 1.0, xx + t, y + H, mz + 1.0, 'wood', { base: y })); }
+    }
+    S.push(box(x1 - 0.4, y + H, z1 - 0.4, x2 + 0.4, y + H + 0.35, z2 + 0.4, 'snow', { base: y, roof: true, name: 'Telhado' }));
+    return y;
+  };
+  // torre de vigia: plataforma com parapeito e escada
+  const tower = (x, z, dir) => {
+    const y = groundRect(x - 2, z - 2, x + 2, z + 2), top = y + 3.2;
+    for (const [px, pz] of [[-1.8, -1.8], [1.8, -1.8], [-1.8, 1.8], [1.8, 1.8]]) S.push(box(x + px - 0.15, y - 0.4, z + pz - 0.15, x + px + 0.15, top, z + pz + 0.15, 'wood', { base: y, name: 'Torre' }));
+    S.push(box(x - 2, top - 0.3, z - 2, x + 2, top, z + 2, 'wood', { base: y, name: 'Torre' }));
+    // parapeito (lado do vale aberto para atirar por cima)
+    S.push(box(x - 2, top, z + 1.85, x + 2, top + 1.0, z + 2, 'wood', { base: y }), box(x - 2, top, z - 2, x - 1.85, top + 1.0, z + 2, 'wood', { base: y }), box(x + 1.85, top, z - 2, x + 2, top + 1.0, z + 2, 'wood', { base: y }));
+    S.push(box(x - 2.1, top + 2.4, z - 2.1, x + 2.1, top + 2.65, z + 2.1, 'snow', { base: y, roof: true }));
+    for (const [px, pz] of [[-1.9, -1.9], [1.9, -1.9], [-1.9, 1.9], [1.9, 1.9]]) S.push(box(x + px - 0.08, top, z + pz - 0.08, x + px + 0.08, top + 2.4, z + pz + 0.08, 'wood', { base: y }));
+    // escada pelo lado de trás (norte)
+    stairs(S, x - 0.8, z - 2 - 4.8, x + 0.8, z - 2, y, top - 0.3, '+z', 9, 'wood');
+    void dir;
+  };
+
+  // ---- base norte (platô a 4 m): duas cabanas, sacos de areia, caixotes
+  cabin(-20, -60, -10, -52, 's');
+  cabin(8, -59, 17, -51, 'w');
+  on(-4, -47, 4, -46, 1.0, 'stone', { name: 'Sacos de areia' });
+  for (const [x, z] of [[-26, -48], [24, -46], [0, -56]]) { const y = groundRect(x - 0.8, z - 0.8, x + 0.8, z + 0.8); S.push(crate(x, z, 1.5, y)); S.push(crate(x + 0.15, z - 0.1, 1.0, y + 1.5)); }
+  for (const [x, z] of [[-6, -58], [30, -54], [-32, -56]]) { const y = groundRect(x - 0.5, z - 0.5, x + 0.5, z + 0.5); S.push(barrel(x, z, y)); }
+  tower(34, -40);
+  // ---- encosta: rochas e pinheiros como cobertura
+  rock(-14, -38, 3.5, 2.2, 1.8); rock(6, -34, 2.6, 2.0, 1.3); rock(-28, -30, 3.0, 3.2, 2.2); rock(20, -28, 4.0, 2.0, 1.5);
+  rock(-6, -24, 2.2, 1.6, 1.1); rock(36, -22, 3.0, 2.5, 2.0); rock(-36, -20, 2.0, 2.0, 1.2);
+  for (const [x, z, h] of [[-40, -58, 8], [-46, -48, 7], [42, -60, 8], [50, -50, 9], [56, -38, 7], [-22, -42, 6.5], [12, -42, 7], [28, -34, 6], [-10, -30, 6], [46, -26, 7.5], [-52, -24, 8], [54, -12, 6.5], [2, -20, 5.5]]) pine(x, z, h);
+  // ---- crista oeste: muretas de pedra no alto (cobertura para quem está em cima)
+  rock(-52, -30, 1.4, 4.0, 1.0); rock(-52, -12, 1.4, 4.0, 1.0); rock(-54, 4, 1.4, 4.0, 1.0); rock(-58, -40, 3.0, 3.0, 2.4);
+  // ---- vale: morrinho com rochas, carcaça de caminhão (caixas), sacos de areia
+  rock(22, -3, 2.4, 2.4, 1.4); rock(14, -8, 2.0, 1.6, 1.0);
+  on(-8, -7, -2, -4.6, 1.4, 'metal', { tint: 3, name: 'Caminhão abandonado' });
+  on(-7.6, -7, -6, -4.6, 2.4, 'metal', { tint: 3, name: 'Caminhão abandonado' });
+  on(-30, -6, -26, -5, 1.0, 'stone', { name: 'Sacos de areia' }); on(32, -14, 33, -10, 1.0, 'stone', { name: 'Sacos de areia' });
+  { const y = groundRect(-40, -10, -39, -9); S.push(crate(-40, -9, 1.4, y)); }
+  // riacho congelado (só visual: gelo liso e escorregadio só na aparência)
+  for (let x = -62; x < 62; x += 2) {
+    const zc = 3.2 * Math.sin(x / 13), w = 1.6 + 0.5 * Math.sin(x / 7);
+    if (zc > 0) continue; // a outra metade vem do espelhamento
+    S.push(box(x, 0, zc - w, x + 2, 0.02, zc + w, 'ice', { noCollide: true, name: 'Gelo' }));
+  }
+  // lampiões nas bases
+  P.push({ type: 'lamp', x: -15, z: -51.7, y: ground(-15, -51) + 2.6, rot: 0 });
+  P.push({ type: 'lamp', x: 7.7, z: -55, y: ground(7, -55) + 2.6, rot: -Math.PI / 2 });
+
+  // ---- montagem com espelhamento
+  for (const b of S) { boxes.push(b); boxes.push(rotBox(b)); }
+  for (const p of P) { props.push(p); props.push(rotProp(p)); }
+  // borda: paredões de rocha
+  const H = 14;
+  boxes.push(box(X0 - 2, -1, Z0 - 2, -X0 + 2, H, Z0, 'snow', { boundary: true, name: 'Paredão' }));
+  boxes.push(box(X0 - 2, -1, -Z0, -X0 + 2, H, -Z0 + 2, 'snow', { boundary: true, name: 'Paredão' }));
+  boxes.push(box(X0 - 2, -1, Z0, X0, H, -Z0, 'snow', { boundary: true, name: 'Paredão' }));
+  boxes.push(box(-X0, -1, Z0, -X0 + 2, H, -Z0, 'snow', { boundary: true, name: 'Paredão' }));
+  boxes.push(box(X0 - 4, -1, Z0 - 4, -X0 + 4, 0, -Z0 + 4, 'ground', { floor: true }));
+  const stairBoxes = boxes.filter((b) => b.stair);
+
+  // ---- renascimento
+  const SP = [[-24, -56], [-14, -48], [-4, -60], [4, -52], [12, -48], [22, -56], [30, -48], [-30, -52], [0, -44], [-8, -54]];
+  for (const [x, z] of SP) { spawns.push({ x, z, yaw: Math.PI, side: 'north' }); spawns.push({ x: -x, z: -z, yaw: 0, side: 'south' }); }
+  const neutral = [[-50, -36], [-54, -6], [22, -10], [40, -30], [-18, -26], [8, -14], [40, -6], [-34, -14], [0, -32], [-44, -50]];
+  for (const [x, z] of neutral) { const yaw = Math.atan2(x, z); spawns.push({ x, z, yaw, side: 'any' }); spawns.push({ x: -x, z: -z, yaw: yaw + Math.PI, side: 'any' }); }
+
+  return {
+    id: 'vale', name: 'Vale Gelado',
+    boxes, props, spawns,
+    bounds: { minX: X0, maxX: -X0, minZ: Z0, maxZ: -Z0 },
+    // altura máxima do piso procurada em (x,z): terreno + 3 m (para não "achar" o telhado das cabanas)
+    floorCap: (x, z) => {
+      for (const b of stairBoxes) if (x >= b.min[0] && x <= b.max[0] && z >= b.min[2] && z <= b.max[2]) return b.max[1] + 0.3;
+      return ground(x, z) + 3.0;
+    },
+    terrainAt: ground,
+    theme: {
+      sky: { top: 0x7f9cbc, horizon: 0xdfe7ee, bottom: 0xe8edf2 },
+      sun: { dir: [0.4, 0.55, -0.6], color: 0xfff4e6, intensity: 2.4 },
+      hemi: { sky: 0xdfe9f5, ground: 0xb9c3cf, intensity: 1.35 },
+      fog: { color: 0xdde4eb, near: 55, far: 210 },
+      exposure: 0.95,
+      clouds: 0.75, ground: 'snow', groundTint: [1, 1, 1], grassTint: [0.86, 0.9, 0.95], debris: [0.34, 0.35, 0.38],
+      snowfall: true, stoneTint: 0xa9b3c0,
+      tints: ['#e8e4dc', '#8c3b2e', '#4f6f8c', '#5d7a52', '#c9a25a', '#d7d0c0', '#efe6d6', '#b8b2a6'],
+    },
+    nav: { cell: 1.0 },
+  };
+}
+
+const BUILDERS = { vale: buildVale, sertao: buildSertao, porto: buildPorto, galpao: buildGalpao, bunker: buildBunker, estacao: buildEstacao, fazenda: buildFazenda, mercado: buildMercado };
 export const MAP_LIST = [
+  { id: 'vale', name: 'Vale Gelado (grande)', desc: 'Vale de neve com platôs altos nas bases, cristas de pedra nos flancos e um riacho congelado no meio. Bom para fuzis.' },
   { id: 'sertao', name: 'Vila Sertão', desc: 'Vila grande com praça, igreja e feira. Ruas longas e becos.' },
   { id: 'porto', name: 'Porto Delta', desc: 'Porto de contêineres com passarela elevada e túneis cobertos.' },
   { id: 'galpao', name: 'Galpão 7 (compacto)', desc: 'Pátios abertos e um galpão coberto no meio. Rápido e intenso.' },
@@ -720,7 +898,7 @@ export function getMap(id) {
   m.solid = m.boxes.filter((b) => !b.noCollide);
   // altura do piso de cada spawn e validação
   for (const s of m.spawns) {
-    s.y = floorHeightAt(s.x, s.z, 3.0, m.solid, PLAYER.radius);
+    s.y = floorHeightAt(s.x, s.z, m.floorCap ? m.floorCap(s.x, s.z) : 3.0, m.solid, PLAYER.radius);
     if (!isFinite(s.y)) s.y = 0;
     s.y += 0.001;
     s.blocked = !!overlapsAny(s.x, s.y + 0.01, s.z, PLAYER.radius, PLAYER.height, m.solid);

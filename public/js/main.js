@@ -460,6 +460,7 @@ class Game {
     });
     net.on('sc', (m) => { for (const row of m.l) this.scores.set(row[0], row); });
     net.on('heal', (m) => this.onHeal(m));
+    net.on('pts', (m) => this.hud.points(m.n, m.w));
     net.on('match', (m) => {
       const prev = this.match ? this.match.phase : null;
       const prevMode = this.matchSettings && this.matchSettings.mode;

@@ -28,7 +28,7 @@ export class HUD {
   constructor(game) {
     this.g = game;
     this.el = {};
-    for (const id of ['multikill', 'hud', 'killfeed', 'timer', 'matchinfo', 'banner', 'radar', 'perf', 'crosshair', 'hitmarker', 'dmgind', 'nametag', 'centermsg', 'announce', 'protect', 'vitals', 'hp', 'ar', 'hpbar', 'arbar', 'ammo', 'nades', 'weapname', 'mag', 'res', 'slots', 'chat', 'chatlog', 'chatinput', 'scope', 'smokeov', 'vignette', 'flash', 'death', 'toast', 'scoreboard', 'endscreen', 'armorico']) this.el[id] = $(id);
+    for (const id of ['multikill', 'hud', 'killfeed', 'timer', 'matchinfo', 'banner', 'radar', 'perf', 'crosshair', 'hitmarker', 'dmgind', 'nametag', 'centermsg', 'announce', 'protect', 'vitals', 'hp', 'ar', 'hpbar', 'arbar', 'ammo', 'nades', 'weapname', 'mag', 'res', 'slots', 'chat', 'chatlog', 'chatinput', 'scope', 'smokeov', 'vignette', 'flash', 'death', 'toast', 'scoreboard', 'endscreen', 'armorico', 'ptspop']) this.el[id] = $(id);
     this.xhCtx = this.el.crosshair.getContext('2d');
     this.radarCtx = this.el.radar.getContext('2d');
     this.xhKey = '';
@@ -56,11 +56,17 @@ export class HUD {
     const c = document.createElement('canvas'); c.width = W; c.height = H;
     const ctx = c.getContext('2d');
     ctx.fillStyle = 'rgba(205,180,140,0.55)'; ctx.fillRect(0, 0, W, H);
-    const boxes = [...map.boxes].filter((b) => !b.floor && !b.hidden && b.min[1] < 2.5).sort((a, b) => a.max[1] - b.max[1]);
+    // relevo (mapas com morros): mais claro = mais alto
+    for (const b of map.boxes) {
+      if (!b.terrain) continue;
+      ctx.fillStyle = `rgba(255,255,255,${Math.min(0.5, 0.045 * (b.max[1] / 0.4))})`;
+      ctx.fillRect((b.min[0] - B.minX) * s, (b.min[2] - B.minZ) * s, (b.max[0] - b.min[0]) * s, (b.max[2] - b.min[2]) * s);
+    }
+    const boxes = [...map.boxes].filter((b) => !b.floor && !b.hidden && !b.terrain && !b.noCollide && b.min[1] - (b.base || 0) < 2.5).sort((a, b) => a.max[1] - b.max[1]);
     for (const b of boxes) {
       const x = (b.min[0] - B.minX) * s, y = (b.min[2] - B.minZ) * s, w = (b.max[0] - b.min[0]) * s, h = (b.max[2] - b.min[2]) * s;
-      const tall = b.max[1] > 2.2;
-      ctx.fillStyle = tall ? 'rgba(40,44,52,0.95)' : b.max[1] > 1.2 ? 'rgba(120,95,60,0.95)' : 'rgba(150,125,90,0.9)';
+      const tall = b.max[1] - (b.base || 0) > 2.2;
+      ctx.fillStyle = tall ? 'rgba(40,44,52,0.95)' : b.max[1] - (b.base || 0) > 1.2 ? 'rgba(120,95,60,0.95)' : 'rgba(150,125,90,0.9)';
       if (b.mat === 'stone' && !tall) ctx.fillStyle = 'rgba(150,145,140,0.95)';
       ctx.fillRect(x, y, w, h);
       if (tall) { ctx.strokeStyle = 'rgba(255,255,255,0.25)'; ctx.lineWidth = 1; ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1); }
@@ -292,19 +298,27 @@ export class HUD {
     return list;
   }
 
-  scoreboardHTML(rows, title, cls = '') {
+  // Placar no estilo dos FPS de PC clássicos: uma faixa por equipe com o
+  // placar da equipe em destaque, colunas curtas (abates, mortes, assistências,
+  // pontos, ping) e uma linha com os seus números no rodapé.
+  scoreboardHTML(rows, title, cls = '', total = null) {
     const g = this.g;
     const gg = g.matchSettings.mode === 'gungame', ctf = g.matchSettings.mode === 'ctf';
-    let h = `<table class="sb ${cls}">${title ? `<caption>${title}</caption>` : ''}<tr><th>#</th><th>Jogador</th>${gg ? '<th>Nível</th>' : ''}${ctf ? '<th>Capturas</th>' : ''}<th>Pontos</th><th>Abates</th><th>Mortes</th><th>K/D</th><th>HS%</th><th>Dano</th><th>Ping</th></tr>`;
+    const extra = gg ? '<th title="Nível no Gun Game">Nív</th>' : ctf ? '<th title="Capturas">Cap</th>' : '';
+    let h = `<table class="sb ${cls}">`;
+    if (title) h += `<caption><span class="tn">${title}</span>${total !== null ? `<span class="tt">${total}</span>` : ''}</caption>`;
+    h += `<tr><th class="pos">#</th><th class="nm">Jogador</th>${extra}<th title="Abates">A</th><th title="Mortes">M</th><th title="Assistências">AS</th><th class="pts" title="Pontos">Pontos</th><th title="Ping (ms)">Ping</th></tr>`;
     rows.forEach((r, i) => {
       const p = g.players.get(r[0]);
       const name = p ? p.name : (r.name || '?');
-      const kd = r[3] ? (r[2] / r[3]).toFixed(2) : r[2].toFixed(2);
-      const hs = r[2] ? Math.round(r[4] / r[2] * 100) + '%' : '0%';
-      const tags = (p && p.id === g.hostId ? '<span class="hostbadge" style="margin-left:6px">HOST</span>' : '') + (p && p.bot || r[6] < 0 ? '<span class="tag">BOT</span>' : '');
-      const lvl = gg ? `<td>${Math.min((r[10] || 0) + 1, GUNGAME_LIST.length)}/${GUNGAME_LIST.length}</td>` : ctf ? `<td>${r[11] || 0}</td>` : '';
-      h += `<tr class="${r[0] === g.myId ? 'me' : ''} ${r[7] ? '' : 'dead'}"><td class="pos">${i + 1}</td><td>${esc(name)}${tags}</td>${lvl}<td>${r[1]}</td><td>${r[2]}</td><td>${r[3]}</td><td>${kd}</td><td>${hs}</td><td>${r[5]}</td><td>${r[6] < 0 ? 'BOT' : r[6]}</td></tr>`;
+      const bot = p && p.bot || r[6] < 0;
+      const tags = (p && p.id === g.hostId ? '<span class="hostbadge">HOST</span>' : '') + (bot ? '<span class="tag">BOT</span>' : '');
+      const lvl = gg ? `<td>${Math.min((r[10] || 0) + 1, GUNGAME_LIST.length)}</td>` : ctf ? `<td>${r[11] || 0}</td>` : '';
+      const ping = bot ? '—' : r[6];
+      const pcls = bot ? '' : r[6] > 120 ? 'bad' : r[6] > 60 ? 'mid' : 'good';
+      h += `<tr class="${r[0] === g.myId ? 'me' : ''} ${r[7] ? '' : 'dead'}"><td class="pos">${i + 1}</td><td class="nm">${r[7] ? '' : '<span class="skull">✖</span>'}${esc(name)}${tags}</td>${lvl}<td>${r[2]}</td><td>${r[3]}</td><td>${r[12] || 0}</td><td class="pts">${r[1]}</td><td class="ping ${pcls}">${ping}</td></tr>`;
     });
+    if (!rows.length) h += '<tr class="empty"><td colspan="9">ninguém aqui</td></tr>';
     h += '</table>';
     return h;
   }
@@ -314,9 +328,20 @@ export class HUD {
     const part = (team) => {
       const T = TEAMS[team];
       const list = rows.filter((r) => TEAM_BY_CODE[r[8]] === team);
-      return this.scoreboardHTML(list, `<span style="color:${T.color}">${T.full}</span> <b style="color:${T.color}">${t[team] || 0}</b>`, 'team-' + team);
+      return this.scoreboardHTML(list, `<span style="color:${T.color}">${T.full}</span> <small>${list.length} jog. • ${list.reduce((a, r) => a + r[1], 0)} pts</small>`, 'team-' + team, t[team] || 0);
     };
-    return `<div class="sbteams">${part('ct')}${part('tr')}</div>`;
+    return `<div class="sbteams">${part('ct')}<div class="sbvs">VS</div>${part('tr')}</div>`;
+  }
+
+  // seus números (rodapé do placar)
+  myLine(rows) {
+    const g = this.g;
+    const i = rows.findIndex((r) => r[0] === g.myId);
+    if (i < 0) return '';
+    const r = rows[i];
+    const kd = r[3] ? (r[2] / r[3]).toFixed(2) : r[2].toFixed(2);
+    const hs = r[2] ? Math.round(r[4] / r[2] * 100) : 0;
+    return `<div class="sbme"><b>${i + 1}º lugar</b><span>Pontos <b>${r[1]}</b></span><span>K/D <b>${kd}</b></span><span>Headshots <b>${hs}%</b></span><span>Dano <b>${r[5]}</b></span><span>Sequência <b>${r[9] || 0}</b></span></div>`;
   }
 
   showScoreboard(on) {
@@ -326,12 +351,24 @@ export class HUD {
     const s = g.matchSettings;
     const team = isTeamModeId(s.mode), gg = s.mode === 'gungame', ctf = s.mode === 'ctf';
     const lim = ctf ? `${s.captureLimit} capturas` : `${team ? s.teamKillLimit : s.killLimit} abates`;
-    const cond = gg ? `vence quem passar pelas ${GUNGAME_LIST.length} armas${s.endCondition !== 'kills' ? ` • ${s.timeLimitMin} min` : ''}`
-      : s.endCondition === 'time' ? `${s.timeLimitMin} min` : s.endCondition === 'kills' ? lim : `${s.timeLimitMin} min ou ${lim}`;
-    const tb = team ? '' : ` • desempate: ${s.tiebreak === 'sudden' ? 'morte súbita' : 'menos mortes → mais HS → mais dano'}`;
-    const body = team ? this.teamTables(this.rows(), g.teamScore) : this.scoreboardHTML(this.rows());
-    el.innerHTML = `<div class="sbhead"><h2>Placar — ${esc(modeName(s.mode))}</h2><span>${mapName(s.map)} • ${cond}${tb}</span></div>` + body;
+    const cond = gg ? `vence quem passar pelas ${GUNGAME_LIST.length} armas` : s.endCondition === 'time' ? `${s.timeLimitMin} min` : s.endCondition === 'kills' ? lim : `${s.timeLimitMin} min ou ${lim}`;
+    const rows = this.rows();
+    const body = team ? this.teamTables(rows, g.teamScore) : this.scoreboardHTML(rows);
+    el.innerHTML = `<div class="sbhead"><h2>${esc(modeName(s.mode))}</h2><span>${mapName(s.map)}</span><span>meta: ${cond}</span><span class="sbtime">${this.el.timer.textContent}</span></div>` + body + this.myLine(rows)
+      + `<div class="sbkey">A = abates • M = mortes • AS = assistências • Pontos: abate 100, cabeça +50, faca +50, explosivo +25, sequência +50 por abate extra, assistência 50${ctf ? ', captura 500' : ''}</div>`;
     el.classList.remove('hidden');
+  }
+
+  // "+150 Abate + Na cabeça" logo abaixo da mira
+  points(n, why) {
+    const box = this.el.ptspop;
+    if (!box || !n) return;
+    const d = document.createElement('div');
+    d.className = 'pp' + (n < 0 ? ' neg' : n >= 200 ? ' big' : '');
+    d.innerHTML = `<b>${n > 0 ? '+' : ''}${n}</b><span>${esc(why || '')}</span>`;
+    box.prepend(d);
+    while (box.children.length > 4) box.lastChild.remove();
+    setTimeout(() => { d.classList.add('out'); setTimeout(() => d.remove(), 500); }, 1800);
   }
 
   showDeath(info) {
@@ -352,7 +389,7 @@ export class HUD {
     const rk = result.ranking;
     const w = rk[0];
     const reasons = { kills: 'limite de abates atingido', time: 'tempo esgotado', sudden: 'morte súbita', host: 'encerrada pelo anfitrião', gungame: 'completou todas as armas' };
-    const pod = (r, i) => r ? `<div class="pd p${i + 1}"><div class="nm">${esc(r.name)}</div><div class="sc">${r.row[1]} pts • ${r.row[2]}/${r.row[3]} • ${r.row[4]} HS</div><div class="blk">${i + 1}º</div></div>` : '<div class="pd"></div>';
+    const pod = (r, i) => r ? `<div class="pd p${i + 1}"><div class="nm">${esc(r.name)}</div><div class="sc">${r.row[1]} pts • ${r.row[2]} A / ${r.row[3]} M • ${r.row[12] || 0} AS</div><div class="blk">${i + 1}º</div></div>` : '<div class="pd"></div>';
     const rows = rk.map((r) => { const row = [...r.row]; row.name = r.name; return row; });
     if (result.teams) {
       const T = result.winnerTeam ? TEAMS[result.winnerTeam] : null;

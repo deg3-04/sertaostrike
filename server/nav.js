@@ -46,7 +46,7 @@ export class NavGrid {
       for (let i = 0; i < this.w; i++) {
         const k = j * this.w + i;
         const x = this.x0 + (i + 0.5) * cell, z = this.z0 + (j + 0.5) * cell;
-        const fy = floorHeightAt(x, z, 3.2, solid, 0.05);
+        const fy = floorHeightAt(x, z, map.floorCap ? map.floorCap(x, z) + 0.2 : 3.2, solid, 0.05);
         if (!isFinite(fy)) continue;
         if (overlapsAny(x, fy + 0.03, z, PLAYER.radius + 0.06, PLAYER.height, solid)) continue;
         this.walk[k] = 1;
@@ -89,7 +89,7 @@ export class NavGrid {
     const dh = this.floor[b] - this.floor[a];
     return dh <= 0.7 && dh >= -2.6;
   }
-  findPath(from, to, maxNodes = 9000) {
+  findPath(from, to, maxNodes = Math.max(9000, this.w * this.h * 0.6)) {
     const s = this.nearest(from[0], from[1], from[2]);
     const g = this.nearest(to[0], to[1], to[2]);
     if (s < 0 || g < 0) return null;
