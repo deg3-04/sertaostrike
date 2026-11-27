@@ -3,6 +3,7 @@
 import { WEAPONS, WEAPON_LIST } from '/shared/weapons.js';
 import { HIT_ZONES, TEAMS, GUNGAME_LIST, modeName } from '/shared/constants.js';
 import { mapName } from '/shared/maps.js';
+import { settings, keyName } from './settings.js';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -323,7 +324,7 @@ export class HUD {
     el.innerHTML = `<h2>${info.suicide ? 'Você se matou' : 'Você foi abatido'}</h2>
       ${info.suicide ? '' : `<div class="who"><span>${esc(info.killer)}</span>${ic ? `<img src="${ic}">` : ''}${info.hs ? ICONS.hs : ''}</div>
       <div class="info">${esc(WEAPONS[info.w] ? WEAPONS[info.w].name : '')}${info.hs ? ' • tiro na cabeça' : ''}${info.pen ? ' • através da parede' : ''} — ${esc(info.killer)} ficou com <b>${info.kh} HP</b>${info.ka ? ` e ${info.ka} de colete` : ''}</div>`}
-      <div class="resp" id="respawncd"></div><div class="info">B = trocar equipamento • TAB = placar</div>`;
+      <div class="resp" id="respawncd"></div><div class="info">${keyName(settings.keys.loadout)} = trocar armas • ${keyName(settings.keys.equipment)} = equipamentos • ${keyName(settings.keys.scoreboard)} = placar</div>`;
     el.classList.remove('hidden');
   }
 

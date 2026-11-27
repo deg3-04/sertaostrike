@@ -1,8 +1,8 @@
 // Menus: tela inicial, seleção de equipamento, pausa, opções e
 // configurações da partida (anfitrião).
 import * as THREE from '/lib/three.js';
-import { WEAPONS, PRIMARIES, SECONDARIES, weaponBars, cycleTime } from '/shared/weapons.js';
-import { CHARACTERS, SIDES, HIT_ZONES, MATCH_LIMITS, GAME_NAME, DAMAGE_SCALE } from '/shared/constants.js';
+import { WEAPONS, PRIMARIES, SECONDARIES, GRENADES, weaponBars, cycleTime } from '/shared/weapons.js';
+import { CHARACTERS, SIDES, HIT_ZONES, MATCH_LIMITS, GAME_NAME, DAMAGE_SCALE, GRENADE, MINE } from '/shared/constants.js';
 import { applyArmor } from '/shared/combat.js';
 import { settings, saveSettings, resetSettings, KEY_LABELS, keyName, QUALITY, CROSSHAIR_PRESETS } from './settings.js';
 import { Character, CHAR_STYLE } from './models.js';
@@ -30,18 +30,13 @@ function damageLine(w, dist = 10) {
   </div><div class="tiny muted" style="margin-top:6px">Dano a ${dist} m contra colete e capacete${w.pellets ? ` (${w.pellets} bagos somados)` : ''} • ${btk} tiro${btk > 1 ? 's' : ''} no tronco para abater</div>`;
 }
 
-export function weaponPicker(container, state, icons, onChange) {
-  let tab = state.tab || 'primary';
-  const render = () => {
-    const list = tab === 'primary' ? PRIMARIES : SECONDARIES;
-    const selId = tab === 'primary' ? state.primary : state.secondary;
-    const w = WEAPONS[selId];
-    const bars = weaponBars(w);
-    const barRow = (label, v, txt) => `<div class="stat"><span>${label}</span><div class="b"><i style="width:${Math.round(v * 100)}%"></i></div><em>${txt}</em></div>`;
-    container.innerHTML = `
-      <div class="wtabs seg"><button data-tab="primary" class="${tab === 'primary' ? 'sel' : ''}">Arma principal</button><button data-tab="secondary" class="${tab === 'secondary' ? 'sel' : ''}">Pistola</button></div>
-      <div class="wgrid">${list.map((id) => `<div class="wcard ${id === selId ? 'sel' : ''}" data-w="${id}"><img src="${icons[id] ? icons[id].color : ''}" alt=""><b>${WEAPONS[id].name}</b><div class="cls">${WEAPONS[id].cls}</div></div>`).join('')}</div>
-      <div class="wdetail">
+const barRow = (label, v, txt) => `<div class="stat"><span>${label}</span><div class="b"><i style="width:${Math.round(Math.max(0, Math.min(1, v)) * 100)}%"></i></div><em>${txt}</em></div>`;
+
+// ficha de uma arma de fogo (usada na troca de armas e na guia de equipamentos)
+function gunDetail(w, icons) {
+  const selId = w.id;
+  const bars = weaponBars(w);
+  return `<div class="wdetail">
         <div>
           <div class="big"><img src="${icons[selId] ? icons[selId].color : ''}" alt=""></div>
           <h4>${w.name}</h4><div class="real">${esc(w.real)}</div>
@@ -61,6 +56,64 @@ export function weaponPicker(container, state, icons, onChange) {
           </div>
         </div>
       </div>`;
+}
+
+// ficha da faca, das granadas e da mina
+function gearDetail(w, icons, match) {
+  const img = `<div class="big"><img src="${icons[w.id] ? icons[w.id].color : ''}" alt=""></div>`;
+  const head = `${img}<h4>${esc(w.name)}</h4><div class="real">${esc(w.real)}</div>`;
+  const mob = barRow('Mobilidade', w.speed / 6.5, Math.round(w.speed / 0.0254) + ' u/s');
+  const count = (n) => `<span>Por vida nesta partida: <b>${n}</b></span>`;
+  const m = match || {};
+  let left = '', right = '';
+  if (w.type === 'melee') {
+    const ds = DAMAGE_SCALE;
+    left = `${head}<div class="tiny muted" style="margin-top:8px">Sempre na mão (tecla 3). Mais forte pelas costas: a facada forte pelas costas abate na hora.</div>`;
+    right = `${barRow('Golpe rápido', w.slash.damage / 100, Math.round(w.slash.damage * ds) + ' de dano')}
+      ${barRow('Facada forte', w.stab.damage / 100, Math.round(w.stab.damage * ds) + ' de dano')}
+      ${mob}
+      <div class="specs">
+        <span>Botão esquerdo: <b>golpe rápido</b> a cada ${w.slash.rate}s</span><span>Botão direito: <b>facada forte</b> a cada ${w.stab.rate}s</span>
+        <span>Pelas costas: <b>${Math.round(w.slash.back * ds)}</b> / <b>${Math.round(w.stab.back * ds)}</b></span><span>Alcance: <b>${w.slash.range} m</b></span>
+      </div>`;
+  } else if (w.nade === 'he') {
+    left = `${head}<div class="tiny muted" style="margin-top:8px">Explode ${(GRENADE.fuseSteps * GRENADE.dt).toFixed(1)}s depois de lançada. O dano cai com a distância e com paredes no meio.</div>`;
+    right = `${barRow('Dano máximo', GRENADE.heDamage / 100, GRENADE.heDamage + '')}
+      ${barRow('Raio', GRENADE.heRadius / 10, GRENADE.heRadius + ' m')}
+      ${mob}
+      <div class="specs"><span>Botão esquerdo: <b>lançamento forte</b></span><span>Botão direito: <b>lançamento fraco</b></span>
+      <span>Penetra colete: <b>${Math.round(GRENADE.heArmorPen * 100)}%</b></span>${count(m.heGrenades ?? '?')}</div>`;
+  } else if (w.nade === 'flash') {
+    left = `${head}<div class="tiny muted" style="margin-top:8px">Cega e ensurdece quem estiver olhando para ela. Vire as costas para escapar.</div>`;
+    right = `${barRow('Cegueira máxima', GRENADE.flashMaxDuration / 6, GRENADE.flashMaxDuration + ' s')}
+      ${mob}
+      <div class="specs"><span>Explode em <b>${(GRENADE.fuseSteps * GRENADE.dt).toFixed(1)}s</b></span><span>Também atinge aliados</span>${count(m.flashGrenades ?? '?')}</div>`;
+  } else if (w.nade === 'smoke') {
+    left = `${head}<div class="tiny muted" style="margin-top:8px">Solta fumaça quando para no chão. Ninguém enxerga através dela.</div>`;
+    right = `${barRow('Duração', GRENADE.smokeDuration / 20, GRENADE.smokeDuration + ' s')}
+      ${barRow('Raio', GRENADE.smokeRadius / 6, GRENADE.smokeRadius + ' m')}
+      ${mob}
+      <div class="specs"><span>Altura: <b>${GRENADE.smokeHeight} m</b></span>${count(m.smokeGrenades ?? '?')}</div>`;
+  } else if (w.nade === 'mine') {
+    left = `${head}<div class="tiny muted" style="margin-top:8px">Plantada no chão à sua frente (botão esquerdo). Arma em ${MINE.armTime}s e explode quando um inimigo pisa perto. Tiros e granadas também a detonam.</div>`;
+    right = `${barRow('Dano máximo', MINE.damage / 200, MINE.damage + '')}
+      ${barRow('Raio', MINE.radius / 10, MINE.radius + ' m')}
+      ${mob}
+      <div class="specs"><span>Dispara a <b>${MINE.triggerRadius} m</b></span><span>Ativas ao mesmo tempo: <b>${MINE.maxActive}</b></span>
+      <span>Some depois de <b>${MINE.lifetime / 60} min</b></span>${count(m.mines ?? '?')}</div>`;
+  }
+  return `<div class="wdetail"><div>${left}</div><div>${right}</div></div>`;
+}
+
+export function weaponPicker(container, state, icons, onChange) {
+  let tab = state.tab || 'primary';
+  const render = () => {
+    const list = tab === 'primary' ? PRIMARIES : SECONDARIES;
+    const selId = tab === 'primary' ? state.primary : state.secondary;
+    container.innerHTML = `
+      <div class="wtabs seg"><button data-tab="primary" class="${tab === 'primary' ? 'sel' : ''}">Arma principal</button><button data-tab="secondary" class="${tab === 'secondary' ? 'sel' : ''}">Pistola</button></div>
+      <div class="wgrid">${list.map((id) => `<div class="wcard ${id === selId ? 'sel' : ''}" data-w="${id}"><img src="${icons[id] ? icons[id].color : ''}" alt=""><b>${WEAPONS[id].name}</b><div class="cls">${WEAPONS[id].cls}</div></div>`).join('')}</div>
+      ${gunDetail(WEAPONS[selId], icons)}`;
   };
   container.onclick = (e) => {
     const t = e.target.closest('[data-tab],[data-w]');
@@ -129,6 +182,8 @@ export class Menus {
     this.g = game;
     this.start = $('start');
     this.loadout = $('loadout');
+    this.guide = $('equipguide');
+    this.guideState = { tab: 'armas', sel: null };
     this.pause = $('pause');
     this.settingsEl = $('settings');
     this.state = { primary: settings.primary, secondary: settings.secondary, tab: 'primary' };
@@ -138,7 +193,7 @@ export class Menus {
   }
 
   anyOpen() {
-    return !this.loadout.classList.contains('hidden') || !this.pause.classList.contains('hidden') || !this.settingsEl.classList.contains('hidden') || !this.start.classList.contains('hidden');
+    return !this.loadout.classList.contains('hidden') || !this.guide.classList.contains('hidden') || !this.pause.classList.contains('hidden') || !this.settingsEl.classList.contains('hidden') || !this.start.classList.contains('hidden');
   }
 
   // ---------------------------------------------------------------- inicial
@@ -175,7 +230,7 @@ export class Menus {
             <div class="grow"></div>
             <button class="btn primary big" id="btnplay" style="max-width:360px">Jogar</button>
           </div>
-          <div class="tiny muted">WASD movimenta • Mouse atira/mira • Espaço pula • Ctrl agacha • Shift anda em silêncio • R recarrega • 1-6 armas • Q última arma • B equipamento • TAB placar • Y chat • Esc menu</div>
+          <div class="tiny muted">WASD movimenta • Mouse atira/mira • Espaço pula • Ctrl agacha • Shift anda em silêncio • R recarrega • 1-6 armas • Q última arma • B trocar armas • M equipamentos • TAB placar • Y chat • Esc menu</div>
         </div>
       </div>`;
     const nick = $('nick');
@@ -247,7 +302,7 @@ export class Menus {
   openLoadout() {
     const g = this.g;
     const st = { primary: g.me.primary || settings.primary, secondary: g.me.secondary || settings.secondary, tab: 'primary' };
-    this.loadout.innerHTML = `<div class="modal"><div class="head"><h2>Equipamento</h2><span class="muted tiny" style="max-width:420px">Vale na hora se você ainda estiver protegido no renascimento; senão, no próximo renascimento.</span><button class="btn small" id="locancel">Fechar (B)</button><button class="btn small primary" id="lookbtn2">Confirmar</button></div>
+    this.loadout.innerHTML = `<div class="modal"><div class="head"><h2>Trocar armas</h2><span class="muted tiny" style="max-width:420px">Vale na hora se você ainda estiver protegido no renascimento; senão, no próximo renascimento.</span><button class="btn small" id="locancel">Fechar (${keyName(settings.keys.loadout)})</button><button class="btn small primary" id="lookbtn2">Confirmar</button></div>
       <div class="panel"><div id="lopicker"></div></div>
       <div class="row" style="margin-top:14px"><div class="grow muted tiny">Personagem e lado também podem ser trocados aqui:</div></div>
       <div class="row wrap" style="margin-top:6px"><div class="seg" id="lochar">${CHARACTERS.map((c) => `<button data-char="${c.id}" class="${settings.char === c.id ? 'sel' : ''}">${c.name}</button>`).join('')}</div></div>
@@ -270,13 +325,55 @@ export class Menus {
   }
   closeLoadout() { this.loadout.classList.add('hidden'); this.g.onMenu(false); }
 
+  // ---------------------------------------------------------------- guia de equipamentos
+  // Só para consulta: todas as armas, explosivos e a faca, com as fichas.
+  // Não troca nada (para isso é a tela "Trocar armas").
+  openGuide() {
+    const g = this.g;
+    const gs = this.guideState;
+    const TABS = [
+      ['armas', 'Armas', [...PRIMARIES, ...SECONDARIES]],
+      ['explosivos', 'Explosivos', GRENADES],
+      ['facas', 'Facas', Object.keys(WEAPONS).filter((id) => WEAPONS[id].type === 'melee')],
+    ];
+    const mine = [g.me && g.me.primary, g.me && g.me.secondary];
+    const render = () => {
+      const [, , list] = TABS.find((t) => t[0] === gs.tab);
+      if (!list.includes(gs.sel)) gs.sel = list[0];
+      const w = WEAPONS[gs.sel];
+      const card = (id) => `<div class="wcard ${id === gs.sel ? 'sel' : ''}" data-w="${id}">${mine.includes(id) ? '<span class="eqtag">sua</span>' : ''}<img src="${g.icons[id] ? g.icons[id].color : ''}" alt=""><b>${WEAPONS[id].name}</b><div class="cls">${WEAPONS[id].cls}</div></div>`;
+      const grid = gs.tab === 'armas'
+        ? `<div class="eqgroup">Armas principais</div><div class="wgrid">${PRIMARIES.map(card).join('')}</div><div class="eqgroup">Pistolas</div><div class="wgrid">${SECONDARIES.map(card).join('')}</div>`
+        : `<div class="wgrid">${list.map(card).join('')}</div>`;
+      this.guide.innerHTML = `<div class="modal"><div class="head"><h2>Guia de equipamentos</h2><span class="muted tiny" style="max-width:420px">Só para consulta. Para trocar de arma use ${esc(keyName(settings.keys.loadout))}.</span><button class="btn small" id="eqclose">Fechar (${esc(keyName(settings.keys.equipment))})</button></div>
+        <div class="panel">
+          <div class="wtabs seg">${TABS.map(([id, name, l]) => `<button data-tab="${id}" class="${gs.tab === id ? 'sel' : ''}">${name} <span class="muted">${l.length}</span></button>`).join('')}</div>
+          ${grid}
+          ${w.damage ? gunDetail(w, g.icons) : gearDetail(w, g.icons, g.matchSettings)}
+        </div></div>`;
+      $('eqclose').onclick = () => this.closeGuide();
+    };
+    this.guide.onclick = (e) => {
+      const t = e.target.closest('[data-tab],[data-w]');
+      if (!t) return;
+      if (t.dataset.tab) gs.tab = t.dataset.tab; else gs.sel = t.dataset.w;
+      g.audio.ui('click');
+      render();
+    };
+    render();
+    this.guide.classList.remove('hidden');
+    g.onMenu(true);
+  }
+  closeGuide() { this.guide.classList.add('hidden'); this.g.onMenu(false); }
+
   // ---------------------------------------------------------------- pausa
   openPause() {
     const g = this.g;
     const host = g.myId === g.hostId;
     this.pause.innerHTML = `<div class="modal pausebox"><div class="logo">${GAME_NAME}</div>
       <button class="btn primary" data-a="resume">Continuar</button>
-      <button class="btn" data-a="loadout">Equipamento</button>
+      <button class="btn" data-a="loadout">Trocar armas</button>
+      <button class="btn" data-a="guide">Guia de equipamentos</button>
       <button class="btn" data-a="settings">Opções</button>
       <button class="btn" data-a="match">${host ? 'Configurar partida' : 'Regras da partida'}</button>
       <button class="btn danger" data-a="leave">Sair para o menu inicial</button>
@@ -290,6 +387,7 @@ export class Menus {
       if (a === 'mute') { g.chat.toggleMute(+b.dataset.id); this.openPause(); return; }
       if (a === 'resume') this.closePause(true);
       else if (a === 'loadout') { this.closePause(); this.openLoadout(); }
+      else if (a === 'guide') { this.closePause(); this.openGuide(); }
       else if (a === 'settings') { this.closePause(); this.openSettings('jogo'); }
       else if (a === 'match') { this.closePause(); this.openSettings('partida'); }
       else if (a === 'leave') { g.leaving = true; location.reload(); }

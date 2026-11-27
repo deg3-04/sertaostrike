@@ -5,7 +5,7 @@ export const DEFAULT_KEYS = {
   forward: 'KeyW', back: 'KeyS', left: 'KeyA', right: 'KeyD',
   jump: 'Space', crouch: 'ControlLeft', walk: 'ShiftLeft', reload: 'KeyR',
   primary: 'Digit1', secondary: 'Digit2', knife: 'Digit3', he: 'Digit4', flash: 'Digit5', smoke: 'Digit6', mine: 'Digit7',
-  lastWeapon: 'KeyQ', inspect: 'KeyF', scoreboard: 'Tab', chat: 'KeyY', teamChat: 'KeyU', loadout: 'KeyB',
+  lastWeapon: 'KeyQ', inspect: 'KeyF', scoreboard: 'Tab', chat: 'KeyY', teamChat: 'KeyU', loadout: 'KeyB', equipment: 'KeyM',
   radio1: 'KeyZ', radio2: 'KeyX', radio3: 'KeyC',
 };
 
@@ -13,7 +13,7 @@ export const KEY_LABELS = {
   forward: 'Andar para frente', back: 'Andar para trás', left: 'Esquerda', right: 'Direita',
   jump: 'Pular', crouch: 'Agachar', walk: 'Andar devagar (silencioso)', reload: 'Recarregar',
   primary: 'Arma principal', secondary: 'Pistola', knife: 'Faca', he: 'Granada explosiva', flash: 'Granada de luz', smoke: 'Granada de fumaça', mine: 'Mina terrestre',
-  lastWeapon: 'Última arma', inspect: 'Inspecionar arma', scoreboard: 'Placar (segurar)', chat: 'Chat (todos)', teamChat: 'Chat da equipe', loadout: 'Trocar equipamento',
+  lastWeapon: 'Última arma', inspect: 'Inspecionar arma', scoreboard: 'Placar (segurar)', chat: 'Chat (todos)', teamChat: 'Chat da equipe', loadout: 'Trocar armas', equipment: 'Guia de equipamentos',
   radio1: 'Rádio: comandos', radio2: 'Rádio: respostas', radio3: 'Rádio: geral',
 };
 
@@ -58,7 +58,12 @@ function deepMerge(base, over) {
 }
 
 export const settings = (() => {
-  try { return deepMerge(DEFAULTS, JSON.parse(localStorage.getItem(KEY) || '{}')); } catch { return deepMerge(DEFAULTS, {}); }
+  let s;
+  try { s = deepMerge(DEFAULTS, JSON.parse(localStorage.getItem(KEY) || '{}')); } catch { s = deepMerge(DEFAULTS, {}); }
+  // uma tecla não pode servir para as duas telas: se "Trocar armas" ficou na
+  // mesma tecla da guia de equipamentos, volta para o padrão (B)
+  if (s.keys.loadout === s.keys.equipment) s.keys.loadout = DEFAULT_KEYS.loadout;
+  return s;
 })();
 
 const listeners = new Set();

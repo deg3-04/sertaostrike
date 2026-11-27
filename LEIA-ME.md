@@ -102,7 +102,8 @@ O primeiro jogador a entrar vira o **anfitrião** (dono da sala, com a coroa �
 | Chat (todos) | Y ou Enter |
 | Chat da equipe | U |
 | Rádio: comandos / respostas / geral | Z / X / C, depois 1 a 6 |
-| Trocar equipamento | B |
+| Trocar armas | B |
+| Guia de equipamentos (só consulta) | M |
 | Menu / opções | Esc |
 
 Todas as teclas podem ser trocadas em **Opções › Teclas**.
