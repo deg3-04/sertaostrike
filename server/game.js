@@ -3,10 +3,10 @@
 // placar, critérios de desempate e bots.
 import { performance } from 'node:perf_hooks';
 import { WEAPONS, PRIMARIES, SECONDARIES, WEAPON_INDEX, cycleTime } from '../shared/weapons.js';
-import { DAMAGE_SCALE, PLAYER, NET, GRENADE, MINE, DEFAULT_MATCH, MATCH_LIMITS, CHARACTERS, HIT_ZONES, FLAG, clamp, VERSION, GAME_NAME, TEAMS, TEAM_CODE, GUNGAME_LIST, HALF_STEP_KEYS } from '../shared/constants.js';
+import { DAMAGE_SCALE, PLAYER, NET, GRENADE, MINE, DEFAULT_MATCH, MATCH_LIMITS, CHARACTERS, HIT_ZONES, FLAG, clamp, VERSION, GAME_NAME, TEAMS, TEAM_CODE, GUNGAME_LIST, HALF_STEP_KEYS, MODE_IDS, isTeamModeId, CTF } from '../shared/constants.js';
 import { getMap, MAP_LIST } from '../shared/maps.js';
 import { SOUND_PACK_IDS } from '../shared/sounds.js';
-import { createGrenadeSim, stepGrenade, lineOfSight, playerCenter, playerHead, eyeHeight, raycastWorld, makeRng } from '../shared/physics.js';
+import { floorHeightAt, createGrenadeSim, stepGrenade, lineOfSight, playerCenter, playerHead, eyeHeight, raycastWorld, makeRng } from '../shared/physics.js';
 import { traceBullet, rawDamage, applyArmor } from '../shared/combat.js';
 import { NavGrid } from './nav.js';
 import { BotBrain, BOT_NAMES } from './bots.js';
@@ -24,7 +24,7 @@ function dist3(a, b) { const x = a[0] - b[0], y = a[1] - b[1], z = a[2] - b[2]; 
 
 const CHAR_IDS = CHARACTERS.map((c) => c.id);
 // regras definidas na sala de espera (travadas durante a partida)
-export const LOBBY_KEYS = ['mode', 'map', 'endCondition', 'timeLimitMin', 'killLimit', 'teamKillLimit'];
+export const LOBBY_KEYS = ['mode', 'map', 'endCondition', 'timeLimitMin', 'killLimit', 'teamKillLimit', 'captureLimit'];
 const SIDE_IDS = ['any', 'north', 'south'];
 
 export function sanitizeSettings(src, base = DEFAULT_MATCH) {
@@ -41,7 +41,7 @@ export function sanitizeSettings(src, base = DEFAULT_MATCH) {
   if (['easy', 'normal', 'hard'].includes(src.botDifficulty)) s.botDifficulty = src.botDifficulty;
   if (SOUND_PACK_IDS.includes(src.soundPack)) s.soundPack = src.soundPack;
   if (MAP_LIST.some((m) => m.id === src.map)) s.map = src.map;
-  if (['ffa', 'tdm', 'gungame'].includes(src.mode)) s.mode = src.mode;
+  if (MODE_IDS.includes(src.mode)) s.mode = src.mode;
   if (['action', 'safe'].includes(src.spawnMode)) s.spawnMode = src.spawnMode;
   for (const k of ['armor', 'helmet', 'infiniteAmmo', 'headshotOnly', 'friendlyFireSelf', 'friendlyFire', 'killRefill', 'streakBonus']) {
     if (k in src) s[k] = !!src[k];
@@ -190,7 +190,7 @@ export class Game {
   }
   statsRow(p) {
     const s = p.stats;
-    return [p.id, s.score, s.kills, s.deaths, s.hs, Math.round(s.dmg), p.bot ? -1 : p.ping, p.alive ? 1 : 0, TEAM_CODE[p.team] || 0, p.streak, p.gg];
+    return [p.id, s.score, s.kills, s.deaths, s.hs, Math.round(s.dmg), p.bot ? -1 : p.ping, p.alive ? 1 : 0, TEAM_CODE[p.team] || 0, p.streak, p.gg, s.caps || 0];
   }
 
   join(ws, m) {
@@ -310,7 +310,8 @@ export class Game {
   }
 
   // ------------------------------------------------------------ equipes
-  isTeamMode() { return this.settings.mode === 'tdm'; }
+  isTeamMode() { return isTeamModeId(this.settings.mode); }
+  isCtf() { return this.settings.mode === 'ctf'; }
   teamCount(team, except) { let n = 0; for (const q of this.players.values()) if (q !== except && q.team === team) n++; return n; }
   // escolhe a equipe: lado preferido (norte = CT, sul = TR) se não desequilibrar, senão a menor
   assignTeam(p) {
@@ -935,14 +936,14 @@ export class Game {
     } else if (tk) {
       killer.stats.score--;
       killer.stats.lastScoreAt = t;
-      if (this.tscore && killer.team) this.tscore[killer.team]--;
+      if (this.tscore && killer.team && !this.isCtf()) this.tscore[killer.team]--;
     } else {
       killer.stats.kills++;
       killer.stats.score++;
       killer.stats.lastScoreAt = t;
       if (flags.hs) killer.stats.hs++;
       killer.streak++;
-      if (this.isTeamMode() && killer.team) this.tscore[killer.team]++;
+      if (this.isTeamMode() && killer.team && !this.isCtf()) this.tscore[killer.team]++;
       if (gg) {
         // Gun Game: sobe de nível ao matar com a arma do nível; facada rouba um nível da vítima
         if (wid === 'knife' && killer.ggWeapon !== 'knife' && victim.gg > 0) victim.gg--;
@@ -966,7 +967,8 @@ export class Game {
       const lim = this.settings.endCondition;
       if (ggWin) this.endMatch('gungame');
       else if (!gg && (lim === 'kills' || lim === 'both')) {
-        if (this.isTeamMode()) {
+        if (this.isCtf()) { /* em Capture a Bandeira a meta é de capturas */ }
+        else if (this.isTeamMode()) {
           if (Math.max(this.tscore.ct, this.tscore.tr) >= this.settings.teamKillLimit) this.endMatch('kills');
         } else if (killer.stats.score >= this.settings.killLimit) this.endMatch('kills');
       }
@@ -1045,6 +1047,7 @@ export class Game {
       sudden: this.suddenDeath, suddenEndsAt: this.suddenEndsAt, st: now(),
       result: this.phase === 'ended' ? this.result : null,
       warmupAutoAt: this.warmupAutoAt, mode: this.settings.mode, ts: this.tscore,
+      fl: this.isCtf() ? this.flagState() : null,
     };
   }
 
@@ -1146,10 +1149,11 @@ export class Game {
 
   resetStats() {
     for (const p of this.players.values()) {
-      p.stats = { kills: 0, deaths: 0, hs: 0, dmg: 0, suicides: 0, score: 0, lastScoreAt: 0, shots: 0, hits: 0 };
+      p.stats = { kills: 0, deaths: 0, hs: 0, dmg: 0, suicides: 0, score: 0, lastScoreAt: 0, shots: 0, hits: 0, caps: 0 };
       p.streak = 0; p.gg = 0;
     }
     this.tscore = { ct: 0, tr: 0 };
+    this.resetFlags();
   }
 
   startMatch() {
@@ -1216,7 +1220,7 @@ export class Game {
           this.suddenDeath = true;
           this.suddenEndsAt = t + 120;
           this.broadcastMatch();
-          this.system(this.isTeamMode() ? 'Empate! MORTE SÚBITA: o próximo abate decide a equipe vencedora.' : 'Empate! MORTE SÚBITA: o próximo abate de um dos líderes decide a partida.');
+          this.system(this.isCtf() ? 'Empate! MORTE SÚBITA: a próxima captura decide a equipe vencedora.' : this.isTeamMode() ? 'Empate! MORTE SÚBITA: o próximo abate decide a equipe vencedora.' : 'Empate! MORTE SÚBITA: o próximo abate de um dos líderes decide a partida.');
         } else this.endMatch('time');
       }
     } else if (this.phase === 'ended' && t >= this.endsAt) {
@@ -1349,7 +1353,7 @@ export class Game {
     }
     if (mapChanged) { this.grenades.clear(); this.smokes = []; this.mines.clear(); this.broadcastMatch(); }
     if (this.phase === 'room') { this.broadcastMatch(); this.broadcastRoom(); return; }
-    if (restart || mapChanged || modeChanged || (this.phase === 'live' && prev.teamKillLimit !== this.settings.teamKillLimit) || (this.phase === 'live' && (prev.endCondition !== this.settings.endCondition || prev.timeLimitMin !== this.settings.timeLimitMin || prev.killLimit !== this.settings.killLimit))) {
+    if (restart || mapChanged || modeChanged || (this.phase === 'live' && (prev.teamKillLimit !== this.settings.teamKillLimit || prev.captureLimit !== this.settings.captureLimit)) || (this.phase === 'live' && (prev.endCondition !== this.settings.endCondition || prev.timeLimitMin !== this.settings.timeLimitMin || prev.killLimit !== this.settings.killLimit))) {
       this.startMatch();
     } else {
       // tempo limite alterado durante o aquecimento/partida
@@ -1415,6 +1419,7 @@ export class Game {
         if (!p.alive && !p.waiting && p.respawnAt && t >= p.respawnAt) this.spawnPlayer(p);
       }
     }
+    if (this.isCtf() && this.phase === 'live') this.updateFlags(t);
     this.updateMatch(t);
 
     const snapEvery = Math.max(1, Math.round(NET.tickRate / (this.config.snapshotRate || NET.snapshotRate)));
@@ -1422,6 +1427,102 @@ export class Game {
     if (this.tickCount % NET.tickRate === 0) {
       this.broadcast({ t: 'sc', l: [...this.players.values()].map((p) => this.statsRow(p)) });
     }
+  }
+
+  // ------------------------------------------------------------ capture a bandeira
+  // A bandeira de cada equipe fica na própria base (CT = norte, TR = sul).
+  // Estados: 0 = na base, 1 = carregada por um inimigo, 2 = caída no chão.
+  flagBase(team) {
+    const b = this.map.flagBases && this.map.flagBases[TEAMS[team].side];
+    return b ? [b.x, b.y, b.z] : [0, 0, 0];
+  }
+  resetFlags() {
+    this.flags = {};
+    for (const team of ['ct', 'tr']) this.flags[team] = { s: 0, p: this.flagBase(team), c: null, dropAt: 0 };
+  }
+  flagState() {
+    if (!this.flags) this.resetFlags();
+    const out = {};
+    for (const [team, f] of Object.entries(this.flags)) {
+      out[team] = { s: f.s, p: f.p.map(r3), c: f.c, back: f.s === 2 ? f.dropAt + CTF.returnTime : 0 };
+    }
+    return out;
+  }
+  flagEvent(ev, team, p) {
+    this.broadcast({ t: 'flag', ev, team, id: p ? p.id : null, fl: this.flagState(), ts: this.tscore, st: now() });
+  }
+  dropFlag(team, pos, t) {
+    const f = this.flags[team];
+    const x = pos[0], z = pos[2];
+    let y = floorHeightAt(x, z, pos[1] + 0.3, this.map.solid, 0.2);
+    if (!isFinite(y) || y < pos[1] - 30) y = Math.max(0, pos[1]);
+    f.s = 2; f.c = null; f.p = [x, y, z]; f.dropAt = t;
+  }
+  updateFlags(t) {
+    if (!this.flags) this.resetFlags();
+    const near = (p, q, r) => Math.hypot(p[0] - q[0], p[2] - q[2]) < r && Math.abs(p[1] - q[1]) < 2.2;
+    for (const [team, f] of Object.entries(this.flags)) {
+      if (f.s === 1) {
+        const c = this.players.get(f.c);
+        if (!c || !c.alive || c.waiting || !c.team || c.team === team) {
+          // portador morreu, saiu ou trocou de time: a bandeira cai onde ele estava
+          this.dropFlag(team, c ? c.pos : f.p, t);
+          this.flagEvent('drop', team, c);
+          if (c) this.system(`${c.name} deixou cair a bandeira dos ${TEAMS[team].name}!`);
+        } else f.p = [c.pos[0], c.pos[1], c.pos[2]];
+      } else if (f.s === 2 && t >= f.dropAt + CTF.returnTime) {
+        f.s = 0; f.p = this.flagBase(team); f.c = null;
+        this.flagEvent('return', team, null);
+        this.system(`A bandeira dos ${TEAMS[team].name} voltou para a base.`);
+      }
+    }
+    for (const p of this.players.values()) {
+      if (!p.alive || p.waiting || !p.team) continue;
+      const own = this.flags[p.team];
+      const enemyTeam = p.team === 'ct' ? 'tr' : 'ct';
+      const enemy = this.flags[enemyTeam];
+      // devolve a própria bandeira caída
+      if (own.s === 2 && near(p.pos, own.p, CTF.touchRadius)) {
+        own.s = 0; own.p = this.flagBase(p.team); own.c = null;
+        p.stats.score += CTF.returnScore; p.stats.lastScoreAt = t;
+        this.flagEvent('return', p.team, p);
+        this.system(`${p.name} devolveu a bandeira dos ${TEAMS[p.team].name}.`);
+      }
+      // pega a bandeira inimiga (na base ou caída)
+      if (enemy.s !== 1 && near(p.pos, enemy.p, CTF.touchRadius)) {
+        enemy.s = 1; enemy.c = p.id; enemy.p = [p.pos[0], p.pos[1], p.pos[2]];
+        this.flagEvent('take', enemyTeam, p);
+        this.system(`${p.name} pegou a bandeira dos ${TEAMS[enemyTeam].name}!`);
+      }
+      // captura: leva a bandeira inimiga até a própria base, com a própria bandeira lá
+      if (enemy.s === 1 && enemy.c === p.id && own.s === 0 && near(p.pos, this.flagBase(p.team), CTF.captureRadius)) {
+        enemy.s = 0; enemy.p = this.flagBase(enemyTeam); enemy.c = null;
+        this.tscore[p.team]++;
+        p.stats.caps = (p.stats.caps || 0) + 1;
+        p.stats.score += CTF.captureScore; p.stats.lastScoreAt = t;
+        this.flagEvent('cap', enemyTeam, p);
+        this.system(`${p.name} capturou a bandeira! ${TEAMS.ct.name} ${this.tscore.ct} × ${this.tscore.tr} ${TEAMS.tr.name}`);
+        const lim = this.settings.endCondition;
+        if (this.suddenDeath) { this.checkSudden(); return; }
+        if ((lim === 'kills' || lim === 'both') && this.tscore[p.team] >= this.settings.captureLimit) { this.endMatch('kills'); return; }
+      }
+    }
+  }
+  // objetivo de navegação dos bots em Capture a Bandeira (ou null)
+  ctfGoal(p, rand) {
+    if (!this.isCtf() || this.phase !== 'live' || !p.team || !this.flags) return null;
+    const own = this.flags[p.team], enemyTeam = p.team === 'ct' ? 'tr' : 'ct', enemy = this.flags[enemyTeam];
+    if (enemy.s === 1 && enemy.c === p.id) return this.flagBase(p.team);          // leva para casa
+    if (own.s !== 0 && rand() < 0.6) return own.p.slice();                         // recupera a nossa
+    if (enemy.s !== 1 && rand() < 0.7) return enemy.p.slice();                     // vai buscar a deles
+    if (enemy.s === 1 && rand() < 0.35) { const c = this.players.get(enemy.c); if (c) return c.pos.slice(); } // escolta
+    return null;
+  }
+  // este bot está carregando a bandeira inimiga?
+  isCarrier(p) {
+    if (!this.flags || !p.team) return false;
+    const f = this.flags[p.team === 'ct' ? 'tr' : 'ct'];
+    return f.s === 1 && f.c === p.id;
   }
 
   sendSnapshot(t) {

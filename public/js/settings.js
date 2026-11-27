@@ -26,7 +26,7 @@ export const DEFAULTS = {
   showFps: true, showNet: true, fullscreen: true,
   crosshair: { style: 'classic', dynamic: true, color: '#3cff5a', size: 5, thickness: 2, gap: 3, outline: true, outlineThickness: 1, dot: false, alpha: 1, tStyle: false, followRecoil: false },
   quality: 'high', renderScale: 1.0,
-  masterVolume: 0.8, sfxVolume: 1.0, uiVolume: 0.6, hrtf: false,
+  masterVolume: 0.8, sfxVolume: 1.0, uiVolume: 0.6, musicVolume: 0.5, hrtf: false,
   keys: { ...DEFAULT_KEYS },
 };
 

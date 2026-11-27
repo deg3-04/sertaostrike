@@ -1,7 +1,7 @@
 // Interface durante o jogo: vida, colete, munição, mira, killfeed (canto
 // superior esquerdo), radar, placar, chat, tela de morte e fim de partida.
 import { WEAPONS, WEAPON_LIST } from '/shared/weapons.js';
-import { HIT_ZONES, TEAMS, GUNGAME_LIST, modeName } from '/shared/constants.js';
+import { HIT_ZONES, TEAMS, GUNGAME_LIST, modeName, isTeamModeId } from '/shared/constants.js';
 import { mapName } from '/shared/maps.js';
 import { settings, keyName } from './settings.js';
 
@@ -277,15 +277,15 @@ export class HUD {
 
   scoreboardHTML(rows, title, cls = '') {
     const g = this.g;
-    const gg = g.matchSettings.mode === 'gungame';
-    let h = `<table class="sb ${cls}">${title ? `<caption>${title}</caption>` : ''}<tr><th>#</th><th>Jogador</th>${gg ? '<th>Nível</th>' : ''}<th>Pontos</th><th>Abates</th><th>Mortes</th><th>K/D</th><th>HS%</th><th>Dano</th><th>Ping</th></tr>`;
+    const gg = g.matchSettings.mode === 'gungame', ctf = g.matchSettings.mode === 'ctf';
+    let h = `<table class="sb ${cls}">${title ? `<caption>${title}</caption>` : ''}<tr><th>#</th><th>Jogador</th>${gg ? '<th>Nível</th>' : ''}${ctf ? '<th>Capturas</th>' : ''}<th>Pontos</th><th>Abates</th><th>Mortes</th><th>K/D</th><th>HS%</th><th>Dano</th><th>Ping</th></tr>`;
     rows.forEach((r, i) => {
       const p = g.players.get(r[0]);
       const name = p ? p.name : (r.name || '?');
       const kd = r[3] ? (r[2] / r[3]).toFixed(2) : r[2].toFixed(2);
       const hs = r[2] ? Math.round(r[4] / r[2] * 100) + '%' : '0%';
       const tags = (p && p.id === g.hostId ? '<span class="hostbadge" style="margin-left:6px">HOST</span>' : '') + (p && p.bot || r[6] < 0 ? '<span class="tag">BOT</span>' : '');
-      const lvl = gg ? `<td>${Math.min((r[10] || 0) + 1, GUNGAME_LIST.length)}/${GUNGAME_LIST.length}</td>` : '';
+      const lvl = gg ? `<td>${Math.min((r[10] || 0) + 1, GUNGAME_LIST.length)}/${GUNGAME_LIST.length}</td>` : ctf ? `<td>${r[11] || 0}</td>` : '';
       h += `<tr class="${r[0] === g.myId ? 'me' : ''} ${r[7] ? '' : 'dead'}"><td class="pos">${i + 1}</td><td>${esc(name)}${tags}</td>${lvl}<td>${r[1]}</td><td>${r[2]}</td><td>${r[3]}</td><td>${kd}</td><td>${hs}</td><td>${r[5]}</td><td>${r[6] < 0 ? 'BOT' : r[6]}</td></tr>`;
     });
     h += '</table>';
@@ -307,10 +307,10 @@ export class HUD {
     if (!on) { el.classList.add('hidden'); return; }
     const g = this.g;
     const s = g.matchSettings;
-    const team = s.mode === 'tdm', gg = s.mode === 'gungame';
-    const lim = team ? s.teamKillLimit : s.killLimit;
+    const team = isTeamModeId(s.mode), gg = s.mode === 'gungame', ctf = s.mode === 'ctf';
+    const lim = ctf ? `${s.captureLimit} capturas` : `${team ? s.teamKillLimit : s.killLimit} abates`;
     const cond = gg ? `vence quem passar pelas ${GUNGAME_LIST.length} armas${s.endCondition !== 'kills' ? ` • ${s.timeLimitMin} min` : ''}`
-      : s.endCondition === 'time' ? `${s.timeLimitMin} min` : s.endCondition === 'kills' ? `${lim} abates` : `${s.timeLimitMin} min ou ${lim} abates`;
+      : s.endCondition === 'time' ? `${s.timeLimitMin} min` : s.endCondition === 'kills' ? lim : `${s.timeLimitMin} min ou ${lim}`;
     const tb = team ? '' : ` • desempate: ${s.tiebreak === 'sudden' ? 'morte súbita' : 'menos mortes → mais HS → mais dano'}`;
     const body = team ? this.teamTables(this.rows(), g.teamScore) : this.scoreboardHTML(this.rows());
     el.innerHTML = `<div class="sbhead"><h2>Placar — ${esc(modeName(s.mode))}</h2><span>${mapName(s.map)} • ${cond}${tb}</span></div>` + body;
@@ -341,7 +341,7 @@ export class HUD {
       const T = result.winnerTeam ? TEAMS[result.winnerTeam] : null;
       el.innerHTML = `<div class="winner">${T ? `🏆 <b style="color:${T.color}">${T.full}</b> venceram!` : 'Empate!'}</div>
         <div class="teamscore"><span style="color:${TEAMS.ct.color}">CT ${result.teams.ct}</span> × <span style="color:${TEAMS.tr.color}">${result.teams.tr} TR</span></div>
-        <div class="subwin">${reasons[result.reason] || ''} • MVP: <b>${w ? esc(w.name) : '-'}</b> • <span id="nextmatch"></span></div>` + this.teamTables(rows, result.teams);
+        <div class="subwin">${result.mode === 'ctf' && result.reason === 'kills' ? 'limite de capturas atingido' : reasons[result.reason] || ''} • MVP: <b>${w ? esc(w.name) : '-'}</b> • <span id="nextmatch"></span></div>` + this.teamTables(rows, result.teams);
       el.classList.remove('hidden');
       this.endsAt = endsAt;
       return;
@@ -450,7 +450,7 @@ export class HUD {
       timer = '--:--';
       banner = 'Sala de espera';
     } else if (m.phase === 'live') {
-      if (m.sudden) { timer = 'MORTE SÚBITA'; banner = s.mode === 'tdm' ? 'O próximo abate decide a equipe vencedora!' : 'O próximo abate de um líder decide!'; low = true; }
+      if (m.sudden) { timer = 'MORTE SÚBITA'; banner = s.mode === 'ctf' ? 'A próxima captura decide a equipe vencedora!' : s.mode === 'tdm' ? 'O próximo abate decide a equipe vencedora!' : 'O próximo abate de um líder decide!'; low = true; }
       else if (m.endsAt) { const left = m.endsAt - now; timer = fmt(left); low = left < 30; }
       else timer = fmt(now - m.startedAt);
     } else if (m.phase === 'ended') {
@@ -464,8 +464,18 @@ export class HUD {
     const lead = rows[0];
     const myIdx = rows.findIndex((r) => r[0] === g.myId);
     let info = '';
-    const goal = s.endCondition === 'time' ? '' : `Meta: <b>${s.mode === 'tdm' ? s.teamKillLimit : s.killLimit}</b> • `;
-    if (s.mode === 'tdm') {
+    const goal = s.endCondition === 'time' ? '' : s.mode === 'ctf' ? `Meta: <b>${s.captureLimit}</b> capturas • ` : `Meta: <b>${s.mode === 'tdm' ? s.teamKillLimit : s.killLimit}</b> • `;
+    if (s.mode === 'ctf') {
+      const t = g.teamScore || { ct: 0, tr: 0 };
+      const fl = g.flags;
+      const st = (team) => {
+        const f = fl && fl[team];
+        if (!f || f.s === 0) return 'na base';
+        if (f.s === 1) return f.c === g.myId ? '<b>com você!</b>' : `com <b>${esc(g.pname(f.c))}</b>`;
+        return `caída (${Math.max(0, Math.ceil(f.back - now))}s)`;
+      };
+      info = `<span class="tsc" style="color:${TEAMS.ct.color}">CT ${t.ct}</span> × <span class="tsc" style="color:${TEAMS.tr.color}">${t.tr} TR</span> • ${goal}<span style="color:${TEAMS.ct.color}">⚑ CT</span> ${st('ct')} • <span style="color:${TEAMS.tr.color}">⚑ TR</span> ${st('tr')}`;
+    } else if (s.mode === 'tdm') {
       const t = g.teamScore || { ct: 0, tr: 0 };
       const mt = g.teamOf(g.myId);
       info = `<span class="tsc" style="color:${TEAMS.ct.color}">CT ${t.ct}</span> × <span class="tsc" style="color:${TEAMS.tr.color}">${t.tr} TR</span> • ${goal}Você: <b style="color:${teamColor(mt) || '#fff'}">${mt ? TEAMS[mt].full : '-'}</b>`;

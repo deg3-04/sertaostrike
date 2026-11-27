@@ -16,7 +16,8 @@ import { LocalPlayer } from './player.js';
 import { RemotePlayer } from './remote.js';
 import { renderWeaponIcons } from './models.js';
 import { WEAPONS, WEAPON_LIST } from '/shared/weapons.js';
-import { DEFAULT_MATCH, GRENADE, NET, TEAMS, GUNGAME_LIST } from '/shared/constants.js';
+import { DEFAULT_MATCH, GRENADE, NET, TEAMS, GUNGAME_LIST, isTeamModeId } from '/shared/constants.js';
+import { FlagView } from './flags.js';
 import { raycastWorld, lineOfSight, rayHitPlayer, viewDir } from '/shared/physics.js';
 const ENEMY_COLOR = '#ff4a3d';
 
@@ -42,11 +43,12 @@ class Game {
     this.clock = 0;
     this.ignoreUnlock = false;
     this.teamScore = { ct: 0, tr: 0 };
+    this.flags = null; // Capture a Bandeira: estado das bandeiras
     this.myStreak = 0;
   }
 
   // ------------------------------------------------------------------ equipes
-  isTeamMode() { return this.matchSettings && this.matchSettings.mode === 'tdm'; }
+  isTeamMode() { return !!this.matchSettings && isTeamModeId(this.matchSettings.mode); }
   teamOf(id) {
     if (!this.isTeamMode()) return null;
     const p = this.players.get(id);
@@ -108,6 +110,7 @@ class Game {
     this.viewmodel = new ViewModel(settings);
     this.applyEnv();
     this.effects = new Effects(this.scene, q);
+    this.flagView = new FlagView(this.scene);
     this.audio = new GameAudio(settings);
     this.audio.occlusion = (pos) => this.occluded(pos);
     window.addEventListener('focus', () => this.audio.refresh());
@@ -144,6 +147,9 @@ class Game {
     this.resize();
     addEventListener('beforeunload', (e) => { if (this.joined && !this.leaving) { e.preventDefault(); e.returnValue = ''; } });
     $('loading').classList.add('hidden');
+    // música da tela principal (continua na sala de espera; o navegador só
+    // libera o som depois do primeiro clique ou tecla)
+    this.audio.roomMusic(true);
     this.last = performance.now();
     requestAnimationFrame((t) => this.frame(t));
   }
@@ -331,6 +337,7 @@ class Game {
       this.matchSettings = m.settings; this.match = m.match;
       this.audio.setPack(m.settings.soundPack);
       if (m.match.ts) this.teamScore = m.match.ts;
+      this.flags = m.match.fl || null;
       for (const p of m.players) this.addPlayer(p);
       this.refreshTeams();
       for (const s of m.smokes) this.effects.smoke(s.id, s.p, s.age);
@@ -409,6 +416,7 @@ class Game {
       if (m.z === 'head' && !m.nade) this.audio.headshot(this.me.helmet);
     });
     net.on('kill', (m) => this.onKill(m));
+    net.on('flag', (m) => this.onFlag(m));
     net.on('gt', (m) => {
       if (m.by === this.myId && m.cid) this.effects.removeNade('c' + m.cid);
       this.effects.addNade(m.id, m.k, m.o, m.v, m.st, this.serverTime(), this.map.solid);
@@ -449,6 +457,7 @@ class Game {
       this.matchSettings = m.settings;
       this.audio.setPack(m.settings.soundPack);
       if (m.match.ts) this.teamScore = m.match.ts;
+      this.flags = m.match.fl || null;
       if (prevMode !== m.settings.mode) this.refreshTeams();
       if (this.room.visible) this.room.render();
       // na sala, o cenário 3D só é refeito quando o dono para de trocar de mapa
@@ -462,7 +471,7 @@ class Game {
       } else {
         this.hud.showEnd(null);
         if (m.match.phase === 'live' && prev !== 'live') {
-          this.hud.announce(m.settings.mode === 'tdm' ? 'Mata-mata em equipe!' : m.settings.mode === 'gungame' ? 'Gun Game!' : 'Partida iniciada!');
+          this.hud.announce(m.settings.mode === 'tdm' ? 'Mata-mata em equipe!' : m.settings.mode === 'ctf' ? 'Capture a bandeira!' : m.settings.mode === 'gungame' ? 'Gun Game!' : 'Partida iniciada!');
           this.audio.ui('start');
           this.firstBlood = false;
           this.myKills = [];
@@ -681,6 +690,23 @@ class Game {
     }
   }
 
+  // Capture a Bandeira: alguém pegou, derrubou, devolveu ou capturou uma bandeira
+  onFlag(m) {
+    this.flags = m.fl;
+    if (m.ts) this.teamScore = m.ts;
+    const me = this.teamOf(this.myId);
+    const who = m.id ? (m.id === this.myId ? 'Você' : this.pname(m.id)) : '';
+    const ours = m.team === me; // a bandeira em questão é da minha equipe?
+    const T = TEAMS[m.team] ? TEAMS[m.team].name : '';
+    let text = '', good = false;
+    if (m.ev === 'take') { good = !ours; text = m.id === this.myId ? 'Você pegou a bandeira! Leve até a sua base' : ours ? `${who} pegou a NOSSA bandeira!` : `${who} pegou a bandeira dos ${T}!`; }
+    else if (m.ev === 'drop') { good = ours; text = ours ? 'A nossa bandeira caiu! Toque nela para devolver' : `A bandeira dos ${T} caiu!`; }
+    else if (m.ev === 'return') { good = ours; text = m.id ? `${who} devolveu a bandeira dos ${T}` : `A bandeira dos ${T} voltou para a base`; }
+    else if (m.ev === 'cap') { good = !ours; text = m.id === this.myId ? 'Você capturou a bandeira!' : ours ? `${who} capturou a nossa bandeira!` : `${who} capturou a bandeira! Ponto para a equipe!`; }
+    if (text) this.hud.announce(text);
+    this.audio.flag(m.ev, good);
+  }
+
   // mostra a sala ou o jogo conforme o estado vindo do servidor
   syncRoomView() {
     const was = this.inRoom;
@@ -689,6 +715,7 @@ class Game {
     this.hud.show(this.joined && !this.inRoom);
     if (this.inRoom && this.input.locked) { this.ignoreUnlock = true; this.input.unlock(); }
     if (was && !this.inRoom) this.audio.ui('start');
+    this.audio.roomMusic(!this.joined || this.inRoom);
   }
 
   frame(tms) {
@@ -725,6 +752,7 @@ class Game {
     this.camera.updateMatrixWorld();
     if (this.joined) { this.updateNameTag(dt); this.updateSpotting(dt); }
     this.effects.update(dt, this.serverTime(), this.camera);
+    this.flagView.update(this, dt, this.clock, this.camera.position);
     this.world.update(this.clock, this.camera.position);
     // arma em primeira pessoa
     const showVm = this.joined && this.me.alive;

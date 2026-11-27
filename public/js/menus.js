@@ -268,7 +268,7 @@ export class Menus {
     if (!el) return;
     if (!info) { el.innerHTML = '<span class="status-dot off"></span>Sem conexão com o servidor. Verifique se ele está rodando e recarregue a página.'; return; }
     const s = info.settings;
-    const lim = s.mode === 'tdm' ? `${s.teamKillLimit} abates da equipe` : `${s.killLimit} abates`;
+    const lim = s.mode === 'ctf' ? `${s.captureLimit} capturas` : s.mode === 'tdm' ? `${s.teamKillLimit} abates da equipe` : `${s.killLimit} abates`;
     const cond = s.mode === 'gungame' ? `${GUNGAME_LIST.length} armas` : s.endCondition === 'time' ? `${s.timeLimitMin} minutos` : s.endCondition === 'kills' ? lim : `${s.timeLimitMin} min ou ${lim} (o que vier primeiro)`;
     const humans = info.players.filter((p) => !p.bot);
     const addr = (info.ips && info.ips.length ? info.ips.map((ip) => `http://${ip}:${info.port}`).join(' ou ') : location.origin);
@@ -563,6 +563,7 @@ export class Menus {
       ${this.range('masterVolume', 'Volume geral', 0, 1, 0.05)}
       ${this.range('sfxVolume', 'Efeitos', 0, 1.5, 0.05)}
       ${this.range('uiVolume', 'Interface', 0, 1, 0.05)}
+      ${this.range('musicVolume', 'Música da sala de espera', 0, 1, 0.05)}
       ${this.toggle('hrtf', 'Áudio 3D avançado (HRTF)', 'Melhor noção de direção com fone; usa mais CPU')}
     </div><div class="note">Todos os sons são sintetizados em tempo real. Use fones para ouvir de onde vêm os passos e tiros.</div>`;
   }
@@ -575,7 +576,7 @@ export class Menus {
     const dis = host ? '' : 'disabled';
     // modo, mapa, tempo e abates são definidos na sala de espera
     const inRoomPhase = !g.match || g.match.phase === 'room';
-    const lock = (k) => (!inRoomPhase && ['mode', 'map', 'endCondition', 'timeLimitMin', 'killLimit', 'teamKillLimit'].includes(k) ? 'disabled' : '');
+    const lock = (k) => (!inRoomPhase && ['mode', 'map', 'endCondition', 'timeLimitMin', 'killLimit', 'teamKillLimit', 'captureLimit'].includes(k) ? 'disabled' : '');
     const lockHint = inRoomPhase ? '' : 'Só na sala de espera, antes da partida';
     const num = (k, label, hint) => {
       const [a, b] = MATCH_LIMITS[k];
@@ -594,6 +595,7 @@ export class Menus {
         ${num('timeLimitMin', 'Tempo da partida (min)', lockHint)}
         ${num('killLimit', 'Abates para vencer (individual)', lockHint || 'Todos contra todos')}
         ${num('teamKillLimit', 'Abates para vencer (equipe)', lockHint || 'Mata-mata em equipe')}
+        ${num('captureLimit', 'Capturas para vencer', lockHint || 'Capture a Bandeira')}
         ${tg('friendlyFire', 'Fogo amigo', 'Em equipe: tiros acertam aliados (50% do dano)')}
         ${sel('tiebreak', 'Critério de desempate', [['stats', 'Menos mortes → mais HS → mais dano → quem chegou antes'], ['sudden', 'Morte súbita (próximo abate decide)']])}
         ${num('respawnTime', 'Tempo de renascimento (s)')}

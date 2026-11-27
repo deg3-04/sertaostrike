@@ -2,7 +2,7 @@
 // conversam e clicam em PRONTO. O dono da sala só consegue iniciar quando
 // todos estiverem prontos. Leve de propósito: a lista só é redesenhada
 // quando o servidor avisa uma mudança, e o 3D de fundo roda a poucos FPS.
-import { CHARACTERS, MODES, MATCH_LIMITS, TEAMS, modeName } from '/shared/constants.js';
+import { CHARACTERS, MODES, MATCH_LIMITS, TEAMS, modeName, isTeamModeId } from '/shared/constants.js';
 import { mapName, MAP_LIST } from '/shared/maps.js';
 import { CHAR_STYLE } from './models.js';
 import { settings, saveSettings } from './settings.js';
@@ -152,14 +152,14 @@ export class Room {
     const dis = edit ? '' : 'disabled';
     const sel = (k, label, opts) => `<label class="rr"><span>${label}</span><select data-r="${k}" ${dis}>${opts.map(([v, n]) => `<option value="${v}" ${s[k] === v ? 'selected' : ''}>${n}</option>`).join('')}</select></label>`;
     const rng = (k, label, unit = '') => { const [a, b] = MATCH_LIMITS[k]; return `<label class="rr"><span>${label}</span><span class="rrv"><input type="range" data-r="${k}" min="${a}" max="${b}" step="1" value="${s[k]}" ${dis}><b id="rv_${k}">${s[k]}</b>${unit}</span></label>`; };
-    const gg = s.mode === 'gungame', team = s.mode === 'tdm';
+    const gg = s.mode === 'gungame', team = isTeamModeId(s.mode), ctf = s.mode === 'ctf';
     const byTime = s.endCondition !== 'kills', byKills = s.endCondition !== 'time' && !gg;
     const html = [
       sel('mode', 'Modo', MODES.map((m) => [m.id, m.name])),
       sel('map', 'Mapa', MAP_LIST.map((m) => [m.id, m.name])),
-      sel('endCondition', 'Fim da partida', [['time', 'Por tempo'], ['kills', gg ? 'Ao completar as armas' : 'Por abates'], ['both', 'O que vier primeiro']]),
+      sel('endCondition', 'Fim da partida', [['time', 'Por tempo'], ['kills', gg ? 'Ao completar as armas' : ctf ? 'Por capturas' : 'Por abates'], ['both', 'O que vier primeiro']]),
       byTime ? rng('timeLimitMin', 'Tempo', ' min') : '',
-      byKills ? (team ? rng('teamKillLimit', 'Abates da equipe para vencer') : rng('killLimit', 'Abates para vencer')) : '',
+      byKills ? (ctf ? rng('captureLimit', 'Capturas para vencer') : team ? rng('teamKillLimit', 'Abates da equipe para vencer') : rng('killLimit', 'Abates para vencer')) : '',
       rng('bots', 'Completar com bots até', ' jog.'),
       s.bots > 0 ? sel('botDifficulty', 'Dificuldade dos bots', [['easy', 'Fácil'], ['normal', 'Normal'], ['hard', 'Difícil']]) : '',
       sel('soundPack', 'Sons', SOUND_PACKS.map((p) => [p.id, p.name])),

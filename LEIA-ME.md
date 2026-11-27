@@ -6,6 +6,7 @@ Jogo de tiro em primeira pessoa no estilo Counter-Strike, leve e feito para joga
   - **Mata-mata (todos contra todos)**: termina por tempo, por número de abates ou pelo que vier primeiro. Há critério de desempate e placar.
   - **Mata-mata em equipe (CT × TR)**: duas equipes equilibradas automaticamente; vence a equipe que chegar primeiro ao limite de abates (padrão 50) ou que tiver mais abates no fim do tempo. Fogo amigo desligado por padrão.
   - **Gun Game**: cada abate troca sua arma pela próxima da lista (Glock → USP-S → Five-SeveN → Desert Eagle → MP5-SD → UMP-45 → P90 → XM1014 → SSG 08 → M4A1-S → AK-47 → AUG → AWP → faca). Vence quem fizer o abate final com a faca. Uma facada rouba um nível da vítima.
+  - **Capture a Bandeira (CT × TR)**: cada equipe tem uma bandeira na própria base (CT no norte, TR no sul). Encoste na bandeira inimiga para pegá-la e leve até a sua base, com a sua bandeira lá, para marcar um ponto. Se o portador morrer a bandeira cai: um inimigo pode pegá-la de novo e a equipe dona devolve à base só encostando nela (ou ela volta sozinha em 25 s). Vence quem chegar primeiro ao limite de capturas (padrão 3) ou tiver mais capturas no fim do tempo. O ícone da bandeira aparece através das paredes e a barra do topo mostra onde está cada uma.
 - **Abates recompensam**: +25 de vida, pente recarregado, e bônus de sequência (3 abates seguidos = +1 granada; 5 = colete e capacete).
 - **Ritmo rápido**: renascimento em 1,5 s, perto da ação (mas fora da mira inimiga), movimento 7% mais rápido e mais controle no ar; opção de pulo automático segurando espaço.
 - **Dano 10% menor que o CS padrão** (ajustável em `DAMAGE_SCALE`, no arquivo `shared/constants.js`).
@@ -73,7 +74,8 @@ O primeiro jogador a entrar vira o **anfitrião** (dono da sala, com a coroa �
 
 ### Sala de espera
 - Ninguém entra no mapa sozinho: todos aguardam na sala até o dono iniciar. Bots contam como prontos.
-- **As regras são escolhidas na sala**, antes de começar: o dono define ali mesmo o modo (mata-mata, em equipe ou Gun Game), o mapa, como a partida termina, o tempo, o limite de abates e os bots ("Mais regras…" abre as demais opções). Os outros veem as regras, mas não mudam. Se o dono alterar alguma regra, o PRONTO de todos é desmarcado para que confirmem de novo.
+- **Música da sala de espera**: na tela principal e enquanto a partida não começa, toca `public/music/sala.m4a` em loop (para trocar, substitua esse arquivo mantendo o nome). O volume fica em ESC › Opções › Áudio › "Música da sala de espera". A música para quando a partida começa e volta na sala.
+- **As regras são escolhidas na sala**, antes de começar: o dono define ali mesmo o modo (mata-mata, em equipe, Gun Game ou Capture a Bandeira), o mapa, como a partida termina, o tempo, o limite de abates e os bots ("Mais regras…" abre as demais opções). Os outros veem as regras, mas não mudam. Se o dono alterar alguma regra, o PRONTO de todos é desmarcado para que confirmem de novo.
 - Durante a partida, modo, mapa, tempo e abates ficam travados (em ESC › Configurar partida aparecem bloqueados); as demais opções continuam ajustáveis.
 - Quem chega com a partida **já em andamento** fica na sala e escolhe quando entrar (**ENTRAR NA PARTIDA**).
 - No fim da partida, depois do placar, todos voltam para a sala com o **PRONTO** desmarcado.
@@ -224,7 +226,7 @@ Edite com o Bloco de Notas e reinicie o servidor:
 | `adminPassword` | se preenchida, qualquer um vira anfitrião digitando `/admin senha` no chat |
 | `warmupTime` | (não é mais usado: a partida começa pela sala de espera) |
 | `snapshotRate` | atualizações por segundo enviadas aos jogadores (32 é o recomendado) |
-| `match` | regras iniciais da partida (as mesmas do menu do anfitrião). Em `"map"` use `"sertao"`, `"porto"`, `"galpao"` ou `"bunker"`; em `"mode"` use `"ffa"`, `"tdm"` ou `"gungame"` |
+| `match` | regras iniciais da partida (as mesmas do menu do anfitrião). Em `"map"` use `"sertao"`, `"porto"`, `"galpao"` ou `"bunker"`; em `"mode"` use `"ffa"`, `"tdm"`, `"gungame"` ou `"ctf"` (capturas para vencer: `"captureLimit"`) |
 
 ### Chat
 - **Y** ou **Enter** abre o chat para todos; **U** abre o chat da equipe (no mata-mata em equipe). Com o chat aberto, **Tab** alterna entre todos e equipe.

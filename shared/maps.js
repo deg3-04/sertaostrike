@@ -725,6 +725,16 @@ export function getMap(id) {
     s.y += 0.001;
     s.blocked = !!overlapsAny(s.x, s.y + 0.01, s.z, PLAYER.radius, PLAYER.height, m.solid);
   }
+  // base das bandeiras (Capture a Bandeira): o ponto de renascimento mais
+  // central de cada lado
+  m.flagBases = {};
+  for (const side of ['north', 'south']) {
+    const list = m.spawns.filter((s) => s.side === side && !s.blocked);
+    if (!list.length) continue;
+    const cx = list.reduce((a, s) => a + s.x, 0) / list.length, cz = list.reduce((a, s) => a + s.z, 0) / list.length;
+    const b = list.reduce((best, s) => (Math.hypot(s.x - cx, s.z - cz) < Math.hypot(best.x - cx, best.z - cz) ? s : best), list[0]);
+    m.flagBases[side] = { x: b.x, y: b.y, z: b.z };
+  }
   cache[id] = m;
   return m;
 }

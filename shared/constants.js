@@ -107,8 +107,22 @@ export const MODES = [
   { id: 'ffa', name: 'Mata-mata (todos contra todos)' },
   { id: 'tdm', name: 'Mata-mata em equipe (CT × TR)' },
   { id: 'gungame', name: 'Gun Game (troca de arma a cada abate)' },
+  { id: 'ctf', name: 'Capture a Bandeira (CT × TR)' },
 ];
+export const MODE_IDS = MODES.map((m) => m.id);
 export function modeName(id) { const m = MODES.find((x) => x.id === id); return m ? m.name : id; }
+// modos jogados em equipes (CT × TR)
+export function isTeamModeId(id) { return id === 'tdm' || id === 'ctf'; }
+
+// Capture a Bandeira: cada equipe tem a sua bandeira na própria base.
+// Pegue a bandeira inimiga e leve até a sua base (com a sua bandeira lá) para pontuar.
+export const CTF = {
+  touchRadius: 1.5,    // distância (m) para pegar/devolver a bandeira
+  captureRadius: 2.2,  // distância da base para capturar
+  returnTime: 25,      // segundos até a bandeira caída voltar sozinha para a base
+  captureScore: 5,     // pontos no placar individual por captura
+  returnScore: 1,      // pontos por devolver a própria bandeira
+};
 
 export const TEAMS = {
   ct: { id: 'ct', name: 'CT', full: 'Contra-Terroristas', color: '#5aa9ff', side: 'north' },
@@ -123,12 +137,13 @@ export const GUNGAME_LIST = ['glock', 'usps', 'fiveseven', 'rev38', 'deagle', 'm
 // e pelo anfitrião dentro do jogo)
 export const DEFAULT_MATCH = {
   map: 'sertao',
-  mode: 'ffa',               // 'ffa' | 'tdm' | 'gungame'
+  mode: 'ffa',               // 'ffa' | 'tdm' | 'gungame' | 'ctf'
   endCondition: 'both',      // 'time' | 'kills' | 'both' (o que vier primeiro)
   timeLimitMin: 10,
   killLimit: 30,
   tiebreak: 'stats',         // 'stats' (menos mortes → mais HS → mais dano → quem chegou antes) | 'sudden' (morte súbita)
   teamKillLimit: 50,         // abates da equipe para vencer (mata-mata em equipe)
+  captureLimit: 3,           // capturas para vencer (capture a bandeira)
   friendlyFire: false,       // dano em companheiros de equipe
   respawnTime: 1.5,
   spawnProtection: 1.5,
@@ -157,6 +172,7 @@ export const MATCH_LIMITS = {
   respawnTime: [0, 30],
   spawnProtection: [0, 10],
   teamKillLimit: [5, 300],
+  captureLimit: [1, 20],
   killHeal: [0, 100],
   heGrenades: [0, 3],
   flashGrenades: [0, 3],

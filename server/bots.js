@@ -96,6 +96,9 @@ export class BotBrain {
   // ---------------------------------------------------------- navegação
   pickGoal(t) {
     const g = this.game;
+    // Capture a Bandeira: pegar, levar ou recuperar bandeiras
+    const cg = g.ctfGoal && g.ctfGoal(this.p, this.rand);
+    if (cg && (g.isCarrier(this.p) || !(this.lastSeen && t - this.lastSeenAt < 5))) return cg;
     if (this.lastSeen && t - this.lastSeenAt < 5) return this.lastSeen;
     // caça inimigos na maior parte do tempo; às vezes flanqueia (chega pelo lado)
     if (this.rand() < 0.72) {
@@ -276,7 +279,11 @@ export class BotBrain {
     const wantNav = !(tg && this.targetVisible);
     if (wantNav) {
       if (!this.path || t > this.repathAt || this.pathIdx >= this.path.length) {
-        this.repath(t, this.lastSeen && t - this.lastSeenAt < 5 ? this.lastSeen : null);
+        // Capture a Bandeira: o objetivo (bandeiras) costuma valer mais que perseguir quem sumiu de vista
+        const carrier = g.isCarrier && g.isCarrier(p);
+        const cg = g.ctfGoal ? g.ctfGoal(p, this.rand) : null;
+        const chase = this.lastSeen && t - this.lastSeenAt < 5 ? this.lastSeen : null;
+        this.repath(t, cg && (carrier || !chase || this.rand() < 0.75) ? cg : chase);
       }
       if (this.path && this.pathIdx < this.path.length) {
         let wp = this.path[this.pathIdx];

@@ -1,0 +1,3 @@
+Coloque aqui a música da sala de espera com o nome sala.m4a.
+Ela toca em loop na tela principal e enquanto os jogadores esperam a partida começar.
+O volume fica em ESC > Configurações > Áudio > "Música da sala de espera".

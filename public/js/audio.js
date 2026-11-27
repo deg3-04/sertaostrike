@@ -348,11 +348,62 @@ export class GameAudio {
   }
 
   applyVolumes() {
+    this.musicVolume();
     if (!this.ctx) return;
     const s = this.settings;
     this.master.gain.value = s.masterVolume;
     this.sfx.gain.value = s.sfxVolume;
     this.uiGain.gain.value = s.uiVolume;
+  }
+
+  // ---------------------------------------------------- música da sala de espera
+  // toca public/music/sala.m4a em loop enquanto o jogador está na sala.
+  // O navegador só deixa tocar depois de um clique/tecla: se for bloqueado,
+  // tenta de novo no próximo clique ou tecla.
+  musicVolume() {
+    if (!this.music) return;
+    const s = this.settings;
+    this.musicTarget = Math.max(0, Math.min(1, (s.masterVolume ?? 0.8) * (s.musicVolume ?? 0.5)));
+    if (this.musicOn && !this.musicFade) this.music.volume = this.musicTarget;
+  }
+
+  roomMusic(on) {
+    if (on === this.musicOn) return;
+    this.musicOn = on;
+    if (!this.music) {
+      if (!on) return;
+      const a = new Audio('/music/sala.m4a');
+      a.loop = true; a.preload = 'auto'; a.volume = 0;
+      a.addEventListener('error', () => { this.musicMissing = true; });
+      this.music = a;
+      const retry = () => { if (this.musicOn && this.music.paused && !this.musicMissing) this.startMusic(); };
+      document.addEventListener('pointerdown', retry);
+      document.addEventListener('keydown', retry);
+    }
+    this.musicVolume();
+    if (on) this.startMusic();
+    else this.fadeMusic(0, 1.2, () => { if (!this.musicOn) this.music.pause(); });
+  }
+
+  startMusic() {
+    const a = this.music;
+    if (!a || this.musicMissing) return;
+    a.volume = 0;
+    const p = a.play();
+    if (p && p.then) p.then(() => this.fadeMusic(this.musicTarget, 1.5)).catch(() => {});
+    else this.fadeMusic(this.musicTarget, 1.5);
+  }
+
+  fadeMusic(to, secs, done) {
+    const a = this.music;
+    if (!a) return;
+    clearInterval(this.musicFade);
+    const from = a.volume, t0 = performance.now();
+    this.musicFade = setInterval(() => {
+      const k = Math.min(1, (performance.now() - t0) / (secs * 1000));
+      a.volume = Math.max(0, Math.min(1, from + (to - from) * k));
+      if (k >= 1) { clearInterval(this.musicFade); this.musicFade = null; if (done) done(); }
+    }, 50);
   }
 
   setListener(p, f, u) {
@@ -757,6 +808,18 @@ export class GameAudio {
     else if (kind === 'end') { [784, 659, 523, 392].forEach((f, i) => this.tone(d, t + i * 0.16, { type: 'triangle', f0: f, dur: 0.3, gain: 0.15 })); }
     else if (kind === 'spawn') this.tone(d, t, { type: 'sine', f0: 600, f1: 900, dur: 0.15, gain: 0.08 });
     else this.tone(d, t, { type: 'sine', f0: 900, dur: 0.04, gain: 0.1 });
+  }
+  // Capture a Bandeira: good = boa notícia para a minha equipe
+  flag(kind, good) {
+    if (!this.ready()) return;
+    const t = this.ctx.currentTime, d = this.out(null, { ui: true, rev: 0.3 });
+    const seq = {
+      take: good ? [523, 659, 784] : [392, 370, 349],
+      cap: good ? [523, 659, 784, 1047, 1319] : [494, 440, 392, 330],
+      drop: [784, 587, 440],
+      return: [659, 880],
+    }[kind] || [880];
+    seq.forEach((f, i) => this.tone(d, t + i * (kind === 'cap' ? 0.11 : 0.09), { type: kind === 'cap' ? 'square' : 'triangle', f0: f, dur: 0.22, gain: kind === 'cap' ? 0.07 : 0.12 }));
   }
   announce(level) {
     if (!this.ready()) return;
