@@ -5,6 +5,10 @@ import { HIT_ZONES, TEAMS, GUNGAME_LIST, modeName, isTeamModeId } from '/shared/
 import { mapName } from '/shared/maps.js';
 import { settings, keyName } from './settings.js';
 
+// nomes dos abates em sequência
+const MULTI_NAMES = { 2: 'Double Kill', 3: 'Triple Kill', 4: 'Quadra Kill', 5: 'Penta Kill', 6: 'Hexa Kill', 7: 'Hepta Kill', 8: 'Octa Kill', 9: 'Nona Kill', 10: 'Deca Kill' };
+export function multiKillName(n) { return MULTI_NAMES[n] || 'Godlike Kill'; }
+
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const DEG = Math.PI / 180;
@@ -24,7 +28,7 @@ export class HUD {
   constructor(game) {
     this.g = game;
     this.el = {};
-    for (const id of ['hud', 'killfeed', 'timer', 'matchinfo', 'banner', 'radar', 'perf', 'crosshair', 'hitmarker', 'dmgind', 'nametag', 'centermsg', 'announce', 'protect', 'vitals', 'hp', 'ar', 'hpbar', 'arbar', 'ammo', 'nades', 'weapname', 'mag', 'res', 'slots', 'chat', 'chatlog', 'chatinput', 'scope', 'smokeov', 'vignette', 'flash', 'death', 'toast', 'scoreboard', 'endscreen', 'armorico']) this.el[id] = $(id);
+    for (const id of ['multikill', 'hud', 'killfeed', 'timer', 'matchinfo', 'banner', 'radar', 'perf', 'crosshair', 'hitmarker', 'dmgind', 'nametag', 'centermsg', 'announce', 'protect', 'vitals', 'hp', 'ar', 'hpbar', 'arbar', 'ammo', 'nades', 'weapname', 'mag', 'res', 'slots', 'chat', 'chatlog', 'chatinput', 'scope', 'smokeov', 'vignette', 'flash', 'death', 'toast', 'scoreboard', 'endscreen', 'armorico']) this.el[id] = $(id);
     this.xhCtx = this.el.crosshair.getContext('2d');
     this.radarCtx = this.el.radar.getContext('2d');
     this.xhKey = '';
@@ -245,6 +249,19 @@ export class HUD {
     this.announceT = 2.2;
     this.el.announce.style.opacity = 1;
   }
+  // abate em sequência: nome cresce com a quantidade de abates
+  multiKill(name, n, mine, color) {
+    const el = this.el.multikill;
+    if (!el) return;
+    const tier = Math.min(10, n);
+    el.className = 'mk' + tier + (mine ? ' mine' : '');
+    el.innerHTML = `<div class="mkt">${esc(multiKillName(n))}</div><div class="mkn"${color ? ` style="color:${color}"` : ''}>${esc(name)}${n > 10 ? ` • ${n} abates seguidos` : ''}</div>`;
+    el.style.opacity = 1;
+    // reinicia a animação
+    void el.offsetWidth;
+    el.classList.add('show');
+    this.multiT = 2.2 + Math.min(2, (n - 2) * 0.25);
+  }
   toast(text, dur = 2.5) { this.el.toast.textContent = text; this.el.toast.style.opacity = 1; this.toastT = dur; }
 
   flashbang(amount, dur) {
@@ -410,6 +427,7 @@ export class HUD {
     // mensagens
     if (this.centerT > 0) { this.centerT -= dt; if (this.centerT < 0.4) el.centermsg.style.opacity = Math.max(0, this.centerT / 0.4); }
     if (this.announceT > 0) { this.announceT -= dt; if (this.announceT < 0.5) el.announce.style.opacity = Math.max(0, this.announceT / 0.5); }
+    if (this.multiT > 0) { this.multiT -= dt; if (this.multiT <= 0) { el.multikill.style.opacity = 0; el.multikill.classList.remove('show'); } }
     if (this.toastT > 0) { this.toastT -= dt; if (this.toastT <= 0) el.toast.style.opacity = 0; }
     // relógio / informações
     this.updateTimer();

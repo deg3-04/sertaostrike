@@ -821,6 +821,33 @@ export class GameAudio {
     }[kind] || [880];
     seq.forEach((f, i) => this.tone(d, t + i * (kind === 'cap' ? 0.11 : 0.09), { type: kind === 'cap' ? 'square' : 'triangle', f0: f, dur: 0.22, gain: kind === 'cap' ? 0.07 : 0.12 }));
   }
+  // abate em sequência: fanfarra que cresce com a quantidade e a voz falando o nome
+  multiKill(n, mine) {
+    const names = { 2: 'Double kill', 3: 'Triple kill', 4: 'Quadra kill', 5: 'Penta kill', 6: 'Hexa kill', 7: 'Hepta kill', 8: 'Octa kill', 9: 'Nona kill', 10: 'Deca kill' };
+    const text = names[n] || 'Godlike';
+    if (this.ready()) {
+      const t = this.ctx.currentTime, d = this.out(null, { ui: true, rev: 0.4 });
+      const base = [523, 659, 784, 988, 1175, 1319, 1568];
+      const k = Math.min(base.length, n + 1);
+      for (let i = 0; i < k; i++) this.tone(d, t + i * 0.06, { type: i % 2 ? 'square' : 'triangle', f0: base[i], dur: 0.3, gain: mine ? 0.09 : 0.06 });
+      if (n >= 4) this.tone(d, t, { type: 'sawtooth', f0: 110, f1: 55, dur: 0.6, gain: 0.08 });
+    }
+    // voz sintetizada do navegador (em inglês), mais grave e lenta quanto maior a sequência
+    try {
+      const sp = window.speechSynthesis;
+      if (!sp) return;
+      sp.cancel();
+      const u = new SpeechSynthesisUtterance(text);
+      const voices = sp.getVoices();
+      const v = voices.find((x) => /^en(-|_)/i.test(x.lang) && /male|david|guy|daniel|george|mark/i.test(x.name)) || voices.find((x) => /^en(-|_)/i.test(x.lang));
+      if (v) { u.voice = v; u.lang = v.lang; } else u.lang = 'en-US';
+      u.rate = Math.max(0.75, 1.05 - (n - 2) * 0.04);
+      u.pitch = Math.max(0.3, 0.85 - (n - 2) * 0.07);
+      const s = this.settings;
+      u.volume = Math.max(0, Math.min(1, (s.masterVolume ?? 0.8) * Math.max(0.4, s.uiVolume ?? 0.6) * 1.4));
+      sp.speak(u);
+    } catch {}
+  }
   announce(level) {
     if (!this.ready()) return;
     const t = this.ctx.currentTime, d = this.out(null, { ui: true, rev: 0.3 });

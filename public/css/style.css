@@ -161,6 +161,26 @@ input, select { font-family: inherit; }
 #centermsg img { height: 24px; }
 #announce { position: absolute; left: 50%; top: 26%; transform: translateX(-50%); font-size: 34px; font-weight: 900; letter-spacing: 4px; color: var(--accent); text-transform: uppercase; text-align: center; }
 #announce .an { animation: annin .35s ease-out; }
+/* abates em sequência: quanto maior a sequência, maior, mais quente e mais tremido */
+#multikill { position: absolute; left: 50%; top: 15%; transform: translateX(-50%); text-align: center; pointer-events: none; opacity: 0; transition: opacity .4s; white-space: nowrap; }
+#multikill .mkt { font-weight: 900; text-transform: uppercase; font-style: italic; letter-spacing: 3px; line-height: 1; -webkit-text-stroke: 1px rgba(0,0,0,.55); }
+#multikill .mkn { margin-top: 6px; font-size: 18px; font-weight: 800; letter-spacing: 2px; color: #fff; text-shadow: 0 2px 4px #000; }
+#multikill.show .mkt { animation: mkin .45s cubic-bezier(.2,1.6,.4,1); }
+#multikill.mk2 .mkt { font-size: 40px; color: #ffe27a; text-shadow: 0 0 10px rgba(255,200,60,.6), 0 3px 0 #7a4a00; }
+#multikill.mk3 .mkt { font-size: 48px; color: #ffc340; text-shadow: 0 0 14px rgba(255,170,30,.7), 0 3px 0 #6a3a00; }
+#multikill.mk4 .mkt { font-size: 56px; color: #ff9a2a; text-shadow: 0 0 18px rgba(255,120,20,.8), 0 4px 0 #5a2600; }
+#multikill.mk5 .mkt { font-size: 64px; color: #ff6a1a; text-shadow: 0 0 22px rgba(255,80,10,.85), 0 4px 0 #4a1600; }
+#multikill.mk6 .mkt { font-size: 70px; color: #ff3a2a; text-shadow: 0 0 26px rgba(255,40,20,.9), 0 4px 0 #400; }
+#multikill.mk7 .mkt { font-size: 76px; color: #ff2a6a; text-shadow: 0 0 30px rgba(255,30,100,.9), 0 5px 0 #400020; }
+#multikill.mk8 .mkt { font-size: 82px; color: #e040ff; text-shadow: 0 0 34px rgba(220,60,255,.9), 0 5px 0 #300040; }
+#multikill.mk9 .mkt { font-size: 88px; color: #8a6aff; text-shadow: 0 0 38px rgba(130,100,255,.95), 0 5px 0 #1a1040; }
+#multikill.mk10 .mkt { font-size: 96px; color: #fff; text-shadow: 0 0 20px #fff, 0 0 44px #ff3af0, 0 0 70px #3ad8ff; }
+#multikill.show.mk5 .mkt, #multikill.show.mk6 .mkt, #multikill.show.mk7 .mkt { animation: mkin .45s cubic-bezier(.2,1.6,.4,1), mkshake .12s .45s 6; }
+#multikill.show.mk8 .mkt, #multikill.show.mk9 .mkt, #multikill.show.mk10 .mkt { animation: mkin .5s cubic-bezier(.2,1.6,.4,1), mkshake .1s .5s 12, mkhue 1.2s .5s infinite linear; }
+#multikill.mine .mkn::before { content: '★ '; color: #ffd27a; }
+@keyframes mkin { 0% { transform: scale(3) rotate(-6deg); opacity: 0; filter: blur(6px); } 60% { opacity: 1; filter: blur(0); } 100% { transform: scale(1) rotate(0); } }
+@keyframes mkshake { 0%,100% { transform: translate(0,0); } 25% { transform: translate(-4px,2px) rotate(-1deg); } 75% { transform: translate(4px,-2px) rotate(1deg); } }
+@keyframes mkhue { to { filter: hue-rotate(360deg); } }
 @keyframes pop { from { transform: scale(1.4); opacity: 0; } }
 @keyframes annin { from { transform: scale(1.8); opacity: 0; letter-spacing: 14px; } }
 #protect { position: absolute; left: 50%; bottom: 150px; transform: translateX(-50%); font-weight: 800; letter-spacing: 3px; color: var(--teal); font-size: 14px; }

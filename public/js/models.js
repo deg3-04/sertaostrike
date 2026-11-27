@@ -660,13 +660,55 @@ function colored(geo, hex, m) {
   if (m) g.applyMatrix4(m);
   for (const name of Object.keys(g.attributes)) if (!['position', 'normal'].includes(name)) g.deleteAttribute(name);
   const c = new THREE.Color(hex);
-  const cols = new Float32Array(g.attributes.position.count * 3);
-  for (let i = 0; i < cols.length; i += 3) { cols[i] = c.r; cols[i + 1] = c.g; cols[i + 2] = c.b; }
+  const P = g.attributes.position;
+  const cols = new Float32Array(P.count * 3);
+  g.computeBoundingBox();
+  const y0 = g.boundingBox.min.y, hgt = g.boundingBox.max.y - y0;
+  for (let i = 0, j = 0; i < P.count; i++, j += 3) {
+    const x = P.getX(i), y = P.getY(i), z = P.getZ(i);
+    // embaixo de cada peça fica um pouco mais escuro (falsa oclusão de ambiente)
+    const grad = hgt > 0.06 ? 0.84 + 0.16 * Math.min(1, (y - y0) / hgt) : 1;
+    // variação suave tipo sujeira/tecido
+    const nse = Math.sin(x * 91.7 + y * 47.3 + z * 63.1) * Math.sin(x * 23.9 - z * 31.7 + y * 17.3);
+    const k = grad * (1 + nse * 0.05);
+    cols[j] = c.r * k; cols[j + 1] = c.g * k; cols[j + 2] = c.b * k;
+  }
   g.setAttribute('color', new THREE.BufferAttribute(cols, 3));
   return g;
 }
 const T = (x, y, z, rx = 0, ry = 0, rz = 0, s = 1) => new THREE.Matrix4().compose(V(x, y, z), new THREE.Quaternion().setFromEuler(new THREE.Euler(rx, ry, rz)), V(s, s, s));
-function rbox(w, h, d) { return new THREE.BoxGeometry(w, h, d); }
+// caixa com quinas arredondadas: a malha 3x3 por face tem o anel interno
+// recuado até o início da curva e as normais apontam para fora da quina,
+// o que dá um volume mais "orgânico" com poucos vértices. Peças minúsculas
+// (olhos, botões) continuam caixas simples.
+const boxCache = new Map();
+function rbox(w, h, d) {
+  const m = Math.min(w, h, d);
+  if (m < 0.03) return new THREE.BoxGeometry(w, h, d);
+  const key = w.toFixed(4) + ',' + h.toFixed(4) + ',' + d.toFixed(4);
+  const hit = boxCache.get(key);
+  if (hit) return hit;
+  const r = m * 0.28;
+  const g = new THREE.BoxGeometry(w, h, d, 3, 3, 3);
+  const P = g.attributes.position, N = g.attributes.normal;
+  const half = [w / 2, h / 2, d / 2];
+  const p = [0, 0, 0], inner = [0, 0, 0];
+  for (let i = 0; i < P.count; i++) {
+    p[0] = P.getX(i); p[1] = P.getY(i); p[2] = P.getZ(i);
+    for (let k = 0; k < 3; k++) {
+      // vértices do meio da face vão para o começo da curva
+      if (Math.abs(Math.abs(p[k]) - half[k] / 3) < 1e-6) p[k] = Math.sign(p[k]) * (half[k] - r);
+      inner[k] = Math.max(-(half[k] - r), Math.min(half[k] - r, p[k]));
+    }
+    let nx = p[0] - inner[0], ny = p[1] - inner[1], nz = p[2] - inner[2];
+    const l = Math.hypot(nx, ny, nz) || 1;
+    nx /= l; ny /= l; nz /= l;
+    P.setXYZ(i, inner[0] + nx * r, inner[1] + ny * r, inner[2] + nz * r);
+    N.setXYZ(i, nx, ny, nz);
+  }
+  boxCache.set(key, g);
+  return g;
+}
 function meshOf(list, mat) {
   const m = new THREE.Mesh(mergeGeometries(list, false), mat);
   m.castShadow = true;
@@ -686,11 +728,11 @@ function elbowPos(S, H, l1, l2, pole) {
 function limb(list, A, B, rA, rB, hex) {
   const d = B.clone().sub(A);
   const len = d.length();
-  const g = new THREE.CylinderGeometry(rB, rA, len, 8);
+  const g = new THREE.CylinderGeometry(rB, rA, len, 12);
   const q = new THREE.Quaternion().setFromUnitVectors(V(0, 1, 0), d.normalize());
   const m = new THREE.Matrix4().compose(A.clone().add(B).multiplyScalar(0.5), q, V(1, 1, 1));
   list.push(colored(g, hex, m));
-  list.push(colored(new THREE.SphereGeometry(rA, 8, 6), hex, T(A.x, A.y, A.z)));
+  list.push(colored(new THREE.SphereGeometry(rA, 12, 8), hex, T(A.x, A.y, A.z)));
 }
 
 export class Character {
@@ -813,9 +855,29 @@ export class Character {
     torso.add(meshOf(tl, this.mat));
     // cabeça
     const head = new THREE.Group(); head.position.y = 0.6; torso.add(head);
-    const hl = [colored(new THREE.SphereGeometry(0.125, 14, 10), st.skin, T(0, 0.045, 0, 0, 0, 0, 1)),
-      colored(rbox(0.05, 0.05, 0.05), st.skin, T(0, 0.03, -0.12))];
-    const eyes = () => { hl.push(colored(rbox(0.035, 0.018, 0.02), 0x111111, T(-0.045, 0.07, -0.115)), colored(rbox(0.035, 0.018, 0.02), 0x111111, T(0.045, 0.07, -0.115))); };
+    const animal = st.head === 'chimp' || st.head === 'baboon';
+    const skull = new THREE.SphereGeometry(0.125, 20, 14); if (!animal) skull.scale(0.92, 1.05, 1.0);
+    const hl = [colored(skull, st.skin, T(0, 0.045, 0, 0, 0, 0, 1))];
+    if (!animal) {
+      // nariz
+      const nose = new THREE.ConeGeometry(0.022, 0.05, 4); nose.rotateY(Math.PI / 4); nose.scale(0.9, 1, 1.1);
+      hl.push(colored(nose, st.skin, T(0, 0.035, -0.12, -0.25, 0, 0)));
+      // orelhas (menos onde a cabeça é coberta)
+      if (st.head !== 'balaclava') for (const s of [-1, 1]) {
+        const ear = new THREE.SphereGeometry(0.028, 8, 6); ear.scale(0.45, 1.1, 0.8);
+        hl.push(colored(ear, st.skin, T(s * 0.115, 0.04, 0.005)));
+      }
+    }
+    const brow = new THREE.Color(st.gear).multiplyScalar(0.55).getHex();
+    const eyes = () => {
+      for (const s of [-1, 1]) {
+        hl.push(colored(rbox(0.034, 0.016, 0.012), 0xe8e4dc, T(s * 0.042, 0.068, -0.112)));
+        hl.push(colored(rbox(0.014, 0.015, 0.012), 0x3a2a1c, T(s * 0.042, 0.068, -0.117)));
+        hl.push(colored(rbox(0.006, 0.007, 0.01), 0x050505, T(s * 0.042, 0.068, -0.121)));
+        hl.push(colored(rbox(0.04, 0.009, 0.014), brow, T(s * 0.043, 0.085, -0.112, 0, 0, s * -0.1)));
+      }
+      hl.push(colored(rbox(0.04, 0.008, 0.01), 0x7a4a3a, T(0, -0.012, -0.118)));
+    };
     switch (st.head) {
       case 'helmet':
         hl.push(colored(new THREE.SphereGeometry(0.15, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.55), st.gear, T(0, 0.075, 0.01)));

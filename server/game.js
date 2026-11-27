@@ -927,7 +927,7 @@ export class Game {
     const suicide = !killer || killer === victim;
     const tk = !suicide && this.sameTeam(killer, victim);
     const gg = this.settings.mode === 'gungame';
-    let ggUp = false, ggWin = false;
+    let ggUp = false, ggWin = false, multi = 0;
     if (suicide) {
       victim.stats.suicides++;
       victim.stats.score--;
@@ -943,6 +943,10 @@ export class Game {
       killer.stats.lastScoreAt = t;
       if (flags.hs) killer.stats.hs++;
       killer.streak++;
+      // abates em sequência (duplo, triplo...): até 4 s entre um abate e o próximo
+      killer.multi = t - (killer.lastKillAt || -99) <= 4 ? (killer.multi || 1) + 1 : 1;
+      killer.lastKillAt = t;
+      multi = killer.multi;
       if (this.isTeamMode() && killer.team && !this.isCtf()) this.tscore[killer.team]++;
       if (gg) {
         // Gun Game: sobe de nível ao matar com a arma do nível; facada rouba um nível da vítima
@@ -957,7 +961,7 @@ export class Game {
     this.broadcast({
       t: 'kill', k: suicide ? victim.id : killer.id, v: victim.id, w: wid,
       hs: flags.hs ? 1 : 0, pen: flags.pen ? 1 : 0, sm: flags.smoke ? 1 : 0, air: flags.air ? 1 : 0, ns: flags.ns ? 1 : 0,
-      tk: tk ? 1 : 0, ks: suicide ? null : this.statsRow(killer), vs: this.statsRow(victim),
+      tk: tk ? 1 : 0, ks: suicide ? null : this.statsRow(killer), vs: this.statsRow(victim), mk: multi >= 2 ? multi : 0,
       kst: suicide || tk ? 0 : killer.streak,
       kh: suicide ? 0 : killer.hp, ka: suicide ? 0 : killer.armor,
       rs: this.settings.respawnTime, ts: this.tscore,

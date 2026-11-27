@@ -18,6 +18,7 @@ import { renderWeaponIcons } from './models.js';
 import { WEAPONS, WEAPON_LIST } from '/shared/weapons.js';
 import { DEFAULT_MATCH, GRENADE, NET, TEAMS, GUNGAME_LIST, isTeamModeId } from '/shared/constants.js';
 import { FlagView } from './flags.js';
+const teamColorOf = (team) => (team && TEAMS[team] ? TEAMS[team].color : null);
 import { raycastWorld, lineOfSight, rayHitPlayer, viewDir } from '/shared/physics.js';
 const ENEMY_COLOR = '#ff4a3d';
 
@@ -542,6 +543,11 @@ class Game {
       if (r) { r.die(null); r.corpseUntil = 0; }
       return;
     }
+    // abate duplo, triplo...: todo mundo vê e ouve, com o nick de quem fez
+    if (m.mk >= 2 && !suicide && !m.tk) {
+      this.hud.multiKill(killer, m.mk, mine, this.isTeamMode() ? teamColorOf(this.teamOf(m.k)) : null);
+      this.audio.multiKill(m.mk, mine);
+    }
     this.hud.killfeed({ killer, victim, w: m.w, hs: m.hs, pen: m.pen, sm: m.sm, air: m.air, ns: m.ns, mine, me, suicide, tk: m.tk, streak: m.kst || 0, kt: this.teamOf(m.k), vt: this.teamOf(m.v) });
     if (me) { this.myStreak = 0; this.hud.setStreak(0); }
     const kr = this.remotes.get(m.k);
@@ -566,11 +572,7 @@ class Game {
       if (m.hs) this.audio.headshotKill(); else this.audio.kill();
       this.myStreak = m.kst || this.myStreak + 1;
       this.hud.setStreak(this.myStreak);
-      if (n >= 2) {
-        const names = { 2: 'Abate duplo!', 3: 'Abate triplo!', 4: 'Abate quádruplo!' };
-        this.hud.announce(names[n] || 'Massacre!');
-        this.audio.announce(n);
-      }
+      void n;
     }
     if (!this.firstBlood && this.match && this.match.phase === 'live' && !suicide) {
       this.firstBlood = true;

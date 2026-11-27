@@ -127,6 +127,9 @@ Todas as teclas podem ser trocadas em **Opções › Teclas**.
 - No fim aparece o **pódio** com o placar completo. A próxima partida começa sozinha depois de alguns segundos.
 - **Início:** a partida só começa quando o dono da sala clica em **Iniciar partida**, com todos prontos (veja "Sala de espera").
 
+### Abates em sequência
+- Abates feitos com até 4 segundos de intervalo viram uma sequência: **Double Kill**, **Triple Kill**, **Quadra Kill**, **Penta Kill**, Hexa, Hepta, Octa, Nona, Deca e, daí para cima, **Godlike**. Todo mundo no mapa vê o nome (maior e mais chamativo a cada abate) com o nick de quem fez, e ouve a voz do navegador falando o nome.
+
 ### Renascimento
 - **Tempo de renascimento** configurável em passos de 0,5 s (padrão 1,5 s). Enquanto espera, a câmera mostra quem te abateu e com quanta vida ele ficou.
 - **Lado de renascimento:** *Base Norte (CT)*, *Base Sul (TR)* ou *Qualquer lugar*. No mata-mata em equipe, a escolha vira a preferência de equipe (respeitando o equilíbrio).
