@@ -7,6 +7,7 @@ import { mapName, MAP_LIST } from '/shared/maps.js';
 import { CHAR_STYLE } from './models.js';
 import { settings, saveSettings } from './settings.js';
 import { mapCard } from './mappreview.js';
+import { SOUND_PACKS } from '/shared/sounds.js';
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -161,6 +162,8 @@ export class Room {
       byKills ? (team ? rng('teamKillLimit', 'Abates da equipe para vencer') : rng('killLimit', 'Abates para vencer')) : '',
       rng('bots', 'Completar com bots até', ' jog.'),
       s.bots > 0 ? sel('botDifficulty', 'Dificuldade dos bots', [['easy', 'Fácil'], ['normal', 'Normal'], ['hard', 'Difícil']]) : '',
+      sel('soundPack', 'Sons', SOUND_PACKS.map((p) => [p.id, p.name])),
+      s.soundPack === 'zoeira' ? '<a class="rrlink" href="/gravar.html" target="_blank">🎙 Gravar os sons da zoeira</a>' : '',
     ].join('');
     if (this.mapShown !== s.map) { this.mapShown = s.map; $('roommap').innerHTML = mapCard(s.map, 200); }
     const box = $('roomrules');

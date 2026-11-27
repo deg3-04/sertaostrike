@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
 import { Game } from './game.js';
 import { GAME_NAME, VERSION, DEFAULT_MATCH } from '../shared/constants.js';
+import { SOUND_PACK_IDS, soundPackDir, SOUND_SLOT_IDS, MAX_VARIATIONS, SLOT_DIR, SOUND_DIRS } from '../shared/sounds.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
@@ -52,18 +53,90 @@ const STATIC = [
   ['/', path.join(ROOT, 'public')],
 ];
 
-function serveStatic(req, res) {
-  let url;
-  try { url = decodeURIComponent(new URL(req.url, 'http://x').pathname); } catch { res.writeHead(400); res.end(); return; }
-  if (url === '/') url = '/index.html';
-  // lista dos sons reais opcionais (public/sounds/)
-  if (url === '/sounds/index.json') {
-    let list = [];
-    try { list = fs.readdirSync(path.join(ROOT, 'public', 'sounds')).filter((f) => /\.(ogg|mp3|wav|m4a|webm|flac)$/i.test(f)); } catch {}
-    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-cache' });
-    res.end(JSON.stringify(list));
+const AUDIO_RE = /\.(ogg|mp3|wav|m4a|webm|flac)$/i;
+const SOUNDS_DIR = path.join(ROOT, 'public', 'sounds');
+const ZOEIRA_DIR = path.join(SOUNDS_DIR, soundPackDir('zoeira'));
+const MAX_UPLOAD = 3 * 1024 * 1024;
+
+function sendJson(res, code, obj) {
+  res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-cache' });
+  res.end(JSON.stringify(obj));
+}
+// nome do espaço de som a partir do arquivo: "ak47_2.wav" -> "ak47"
+function slotOf(file) { return file.replace(AUDIO_RE, '').replace(/[_-]\d+$/, '').toLowerCase(); }
+// arquivos de áudio da pasta e das subpastas (um nível):
+// "glock_1.wav", "01-tiros-pistolas/glock_2.wav"
+function listSounds(dir) {
+  const out = [];
+  let entries = [];
+  try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return out; }
+  for (const e of entries) {
+    if (e.isFile() && AUDIO_RE.test(e.name)) out.push(e.name);
+    else if (e.isDirectory() && !e.name.startsWith('.')) {
+      try {
+        for (const f of fs.readdirSync(path.join(dir, e.name), { withFileTypes: true })) if (f.isFile() && AUDIO_RE.test(f.name)) out.push(`${e.name}/${f.name}`);
+      } catch {}
+    }
+  }
+  return out;
+}
+// gravações do modo zoeira: se houver senha de administrador no config.json,
+// ela é exigida (cabeçalho x-admin) para gravar ou apagar
+function uploadAllowed(req) {
+  if (config.soundUploads === false) return false;
+  return !config.adminPassword || req.headers['x-admin'] === config.adminPassword;
+}
+
+function handleZoeira(req, res, name) {
+  if (!uploadAllowed(req)) { sendJson(res, 403, { erro: config.soundUploads === false ? 'Gravação desativada no config.json' : 'Senha de administrador incorreta' }); return; }
+  if (req.method === 'DELETE') {
+    // "glock_1.wav" ou "01-tiros-pistolas/glock_1.wav" (só subpastas conhecidas)
+    const m = /^(?:([a-z0-9-]+)\/)?([a-z0-9_]+\.(?:ogg|mp3|wav|m4a|webm|flac))$/i.exec(name);
+    if (!m || (m[1] && !SOUND_DIRS.includes(m[1])) || !SOUND_SLOT_IDS.includes(slotOf(m[2]))) { sendJson(res, 400, { erro: 'Arquivo inválido' }); return; }
+    fs.rm(m[1] ? path.join(ZOEIRA_DIR, m[1], m[2]) : path.join(ZOEIRA_DIR, m[2]), { force: true }, () => sendJson(res, 200, { ok: true }));
     return;
   }
+  if (req.method !== 'POST' || !SOUND_SLOT_IDS.includes(name)) { sendJson(res, 400, { erro: 'Som inválido' }); return; }
+  const parts = [];
+  let size = 0, aborted = false;
+  req.on('data', (c) => {
+    size += c.length;
+    if (size > MAX_UPLOAD) { aborted = true; sendJson(res, 413, { erro: 'Arquivo grande demais (máx. 3 MB)' }); req.destroy(); return; }
+    parts.push(c);
+  });
+  req.on('end', () => {
+    if (aborted) return;
+    const buf = Buffer.concat(parts);
+    if (buf.length < 44 || buf.toString('ascii', 0, 4) !== 'RIFF' || buf.toString('ascii', 8, 12) !== 'WAVE') { sendJson(res, 400, { erro: 'Envie um WAV' }); return; }
+    // salva na subpasta do grupo (ex.: 01-tiros-pistolas/glock_2.wav); a
+    // numeração também conta arquivos soltos na raiz da pasta zoeira
+    const sub = SLOT_DIR[name];
+    fs.mkdirSync(path.join(ZOEIRA_DIR, sub), { recursive: true });
+    const used = listSounds(ZOEIRA_DIR).map((f) => f.split('/').pop().toLowerCase()).filter((f) => slotOf(f) === name);
+    if (used.length >= MAX_VARIATIONS) { sendJson(res, 409, { erro: `Já tem ${MAX_VARIATIONS} variações; apague uma antes` }); return; }
+    let n = 1;
+    while (used.some((f) => f.startsWith(`${name}_${n}.`))) n++;
+    const base = `${name}_${n}.wav`;
+    fs.writeFile(path.join(ZOEIRA_DIR, sub, base), buf, (err) => (err ? sendJson(res, 500, { erro: 'Não consegui salvar' }) : sendJson(res, 200, { ok: true, file: `${sub}/${base}` })));
+  });
+}
+
+function serveStatic(req, res) {
+  let url, query;
+  try { const u = new URL(req.url, 'http://x'); url = decodeURIComponent(u.pathname); query = u.searchParams; } catch { res.writeHead(400); res.end(); return; }
+  if (url === '/') url = '/index.html';
+  // lista dos sons de um pacote (public/sounds/ ou public/sounds/<pacote>/)
+  if (url === '/sounds/index.json') {
+    const pack = SOUND_PACK_IDS.includes(query.get('pack')) ? query.get('pack') : 'padrao';
+    const dir = soundPackDir(pack);
+    sendJson(res, 200, listSounds(path.join(SOUNDS_DIR, dir)).map((f) => (dir ? `${dir}/${f}` : f)));
+    return;
+  }
+  if (url.startsWith('/sounds/zoeira/') && (req.method === 'POST' || req.method === 'DELETE')) {
+    handleZoeira(req, res, url.slice('/sounds/zoeira/'.length));
+    return;
+  }
+  if (url === '/sounds/zoeira/can-upload') { sendJson(res, 200, { ok: config.soundUploads !== false, senha: !!config.adminPassword }); return; }
   for (const [prefix, dir] of STATIC) {
     if (!url.startsWith(prefix)) continue;
     const file = path.join(dir, url.slice(prefix.length));

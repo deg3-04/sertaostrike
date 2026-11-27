@@ -1,0 +1,16 @@
+ARMAS: MANUSEIO
+===============
+
+Grave cada som abaixo e salve NESTA PASTA com o nome indicado.
+Para ter variações (o jogo sorteia uma a cada vez), use _2, _3... até _5.
+Formatos aceitos: .wav, .mp3, .ogg, .m4a, .webm ou .flac.
+
+ARQUIVO         SOM                              COMO GRAVAR
+reload_1.wav    Recarregar                       tirar pente, pôr pente, tchec
+deploy_1.wav    Sacar arma                       tchec
+bolt_1.wav      Ferrolho (AWP/SSG)               clac-clac
+shell_1.wav     Cartucho caindo no chão          tilim
+dryfire_1.wav   Sem munição                      clic
+scope_1.wav     Mira (zoom)                      tic
+knife_1.wav     Faca no ar                       vush
+knifehit_1.wav  Faca acertando                   tchak

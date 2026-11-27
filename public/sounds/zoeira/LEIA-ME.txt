@@ -1,0 +1,20 @@
+SONS DA ZOEIRA
+==============
+
+Cada subpasta é um grupo de sons e tem um LISTA-DE-SONS.txt com o nome
+exato de cada arquivo a gravar:
+
+  01-tiros-pistolas           05-explosivos
+  02-tiros-submetralhadoras   06-armas-manuseio
+  03-tiros-fuzis              07-corpo
+  04-tiros-precisao-escopetas 08-acertos-anuncios
+                              09-interface
+
+Duas formas de gravar:
+1. Pelo estúdio: abra http://localhost:3000/gravar.html no computador do
+   servidor. Ele já salva cada som na subpasta certa.
+2. Na mão: grave (no celular, por exemplo), renomeie como está na lista
+   (glock_1.wav, footstep_2.mp3...) e coloque na subpasta.
+
+Não precisa reiniciar o servidor: o jogo recarrega os sons quando você
+volta para a janela dele. Corte o silêncio do começo, senão o som sai atrasado.

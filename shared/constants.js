@@ -148,6 +148,7 @@ export const DEFAULT_MATCH = {
   intermission: 15,          // segundos de placar final antes da próxima partida
   bots: 4,                   // preenche com bots até N jogadores (0 = sem bots)
   botDifficulty: 'normal',   // 'easy' | 'normal' | 'hard'
+  soundPack: 'padrao',       // 'padrao' | 'profissional' | 'zoeira' (veja shared/sounds.js)
 };
 
 export const MATCH_LIMITS = {

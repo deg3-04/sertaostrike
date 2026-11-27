@@ -5,6 +5,7 @@ import { performance } from 'node:perf_hooks';
 import { WEAPONS, PRIMARIES, SECONDARIES, WEAPON_INDEX, cycleTime } from '../shared/weapons.js';
 import { DAMAGE_SCALE, PLAYER, NET, GRENADE, MINE, DEFAULT_MATCH, MATCH_LIMITS, CHARACTERS, HIT_ZONES, FLAG, clamp, VERSION, GAME_NAME, TEAMS, TEAM_CODE, GUNGAME_LIST, HALF_STEP_KEYS } from '../shared/constants.js';
 import { getMap, MAP_LIST } from '../shared/maps.js';
+import { SOUND_PACK_IDS } from '../shared/sounds.js';
 import { createGrenadeSim, stepGrenade, lineOfSight, playerCenter, playerHead, eyeHeight, raycastWorld, makeRng } from '../shared/physics.js';
 import { traceBullet, rawDamage, applyArmor } from '../shared/combat.js';
 import { NavGrid } from './nav.js';
@@ -38,6 +39,7 @@ export function sanitizeSettings(src, base = DEFAULT_MATCH) {
   if (['time', 'kills', 'both'].includes(src.endCondition)) s.endCondition = src.endCondition;
   if (['stats', 'sudden'].includes(src.tiebreak)) s.tiebreak = src.tiebreak;
   if (['easy', 'normal', 'hard'].includes(src.botDifficulty)) s.botDifficulty = src.botDifficulty;
+  if (SOUND_PACK_IDS.includes(src.soundPack)) s.soundPack = src.soundPack;
   if (MAP_LIST.some((m) => m.id === src.map)) s.map = src.map;
   if (['ffa', 'tdm', 'gungame'].includes(src.mode)) s.mode = src.mode;
   if (['action', 'safe'].includes(src.spawnMode)) s.spawnMode = src.spawnMode;

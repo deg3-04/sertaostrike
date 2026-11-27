@@ -1,0 +1,12 @@
+TIROS: SUBMETRALHADORAS
+=======================
+
+Grave cada som abaixo e salve NESTA PASTA com o nome indicado.
+Para ter variações (o jogo sorteia uma a cada vez), use _2, _3... até _5.
+Formatos aceitos: .wav, .mp3, .ogg, .m4a, .webm ou .flac.
+
+ARQUIVO      SOM                              COMO GRAVAR
+p90_1.wav    P90                              tá! (um tiro só, a rajada o jogo faz)
+mp5sd_1.wav  MP5-SD (com silenciador)         tsc!
+ump45_1.wav  UMP-45                           tó!
+mac10_1.wav  MAC-10                           tec!

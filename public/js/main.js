@@ -1,7 +1,7 @@
 // Sertão Strike — cliente. Liga renderização, rede, entrada, HUD e menus.
 import * as THREE from '/lib/three.js';
 import { net } from './net.js';
-import { settings, onSettingsChange, QUALITY } from './settings.js';
+import { settings, onSettingsChange, QUALITY, keyName } from './settings.js';
 import { getMap, mapName } from '/shared/maps.js';
 import { buildWorld } from './world.js';
 import { ViewModel } from './viewmodel.js';
@@ -110,6 +110,7 @@ class Game {
     this.effects = new Effects(this.scene, q);
     this.audio = new GameAudio(settings);
     this.audio.occlusion = (pos) => this.occluded(pos);
+    window.addEventListener('focus', () => this.audio.refresh());
     this.effects.onBounce = (p, kind) => this.audio.bounce(p, kind);
     // brilho do lugar (marcas de bala não ficam "acesas" em salas escuras)
     const lightTmp = { sky: 1, lamp: [0, 0, 0] };
@@ -231,7 +232,7 @@ class Game {
   // ------------------------------------------------------------------ menus e teclas
   onMenu(open, resume) {
     const m = this.menus;
-    this.menuOpen = !m.loadout.classList.contains('hidden') || !m.pause.classList.contains('hidden') || !m.settingsEl.classList.contains('hidden');
+    this.menuOpen = !m.loadout.classList.contains('hidden') || !m.guide.classList.contains('hidden') || !m.pause.classList.contains('hidden') || !m.settingsEl.classList.contains('hidden');
     if (this.menuOpen && this.input.locked) { this.ignoreUnlock = true; this.input.unlock(); }
     if (!this.menuOpen && this.joined && resume && !this.inRoom) this.input.lock();
   }
@@ -249,6 +250,7 @@ class Game {
       if (this.inRoom && !this.menuOpen) return false; // na sala as teclas do jogo não valem
       if (e.code === 'Escape') {
         if (!this.menus.loadout.classList.contains('hidden')) { this.menus.closeLoadout(); return true; }
+        if (!this.menus.guide.classList.contains('hidden')) { this.menus.closeGuide(); return true; }
         if (!this.menus.settingsEl.classList.contains('hidden')) { this.menus.closeSettings(); return true; }
         if (!this.menus.pause.classList.contains('hidden')) { this.menus.closePause(); return true; }
         if (inp.locked) { this.menus.openPause(); return true; }
@@ -257,6 +259,11 @@ class Game {
       if (e.code === settings.keys.loadout && !e.repeat) {
         if (!this.menus.loadout.classList.contains('hidden')) this.menus.closeLoadout();
         else if (!this.menuOpen) this.menus.openLoadout();
+        return true;
+      }
+      if (e.code === settings.keys.equipment && !e.repeat) {
+        if (!this.menus.guide.classList.contains('hidden')) this.menus.closeGuide();
+        else if (!this.menuOpen) this.menus.openGuide();
         return true;
       }
       const teamKey = e.code === settings.keys.teamChat;
@@ -322,6 +329,7 @@ class Game {
       this.myId = m.id; this.hostId = m.host; this.joined = true;
       net.autoReconnect = false;
       this.matchSettings = m.settings; this.match = m.match;
+      this.audio.setPack(m.settings.soundPack);
       if (m.match.ts) this.teamScore = m.match.ts;
       for (const p of m.players) this.addPlayer(p);
       this.refreshTeams();
@@ -330,7 +338,7 @@ class Game {
       this.menus.hideStart();
       this.inRoom = true; // quem entra começa na sala de espera
       this.syncRoomView();
-      this.hud.chatLine({ sys: true, m: `Bem-vindo, ${m.name}! Pressione B para trocar de arma, ESC para opções.` });
+      this.hud.chatLine({ sys: true, m: `Bem-vindo, ${m.name}! Pressione ${keyName(settings.keys.loadout)} para trocar de arma, ${keyName(settings.keys.equipment)} para ver os equipamentos, ESC para opções.` });
       if (m.match.phase === 'ended' && m.match.result) this.hud.showEnd(m.match.result, m.match.endsAt);
       this.menuOpen = false;
     });
@@ -439,6 +447,7 @@ class Game {
       const prevMode = this.matchSettings && this.matchSettings.mode;
       this.match = m.match;
       this.matchSettings = m.settings;
+      this.audio.setPack(m.settings.soundPack);
       if (m.match.ts) this.teamScore = m.match.ts;
       if (prevMode !== m.settings.mode) this.refreshTeams();
       if (this.room.visible) this.room.render();

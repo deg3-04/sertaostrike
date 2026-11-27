@@ -1,0 +1,15 @@
+ACERTOS E ANÚNCIOS
+==================
+
+Grave cada som abaixo e salve NESTA PASTA com o nome indicado.
+Para ter variações (o jogo sorteia uma a cada vez), use _2, _3... até _5.
+Formatos aceitos: .wav, .mp3, .ogg, .m4a, .webm ou .flac.
+
+ARQUIVO             SOM                              COMO GRAVAR
+hitmarker_1.wav     Acertar alguém                   tic
+headshot_1.wav      Tiro na cabeça                   plim!
+kill_1.wav          Abate                            toma!
+headshotkill_1.wav  Abate com tiro na cabeça         BOOM HEADSHOT
+streak_1.wav        Sequência de abates              tá on fire!
+heal_1.wav          Recuperar vida                   ahh
+levelup_1.wav       Subir de arma (gun game)         uhuul

@@ -102,7 +102,8 @@ O primeiro jogador a entrar vira o **anfitrião** (dono da sala, com a coroa �
 | Chat (todos) | Y ou Enter |
 | Chat da equipe | U |
 | Rádio: comandos / respostas / geral | Z / X / C, depois 1 a 6 |
-| Trocar equipamento | B |
+| Trocar armas | B |
+| Guia de equipamentos (só consulta) | M |
 | Menu / opções | Esc |
 
 Todas as teclas podem ser trocadas em **Opções › Teclas**.
@@ -144,6 +145,18 @@ Todas as teclas podem ser trocadas em **Opções › Teclas**.
 - O dano **cai com a distância** de acordo com a arma (a escopeta cai rápido; o AWP quase não cai).
 - **Paredes finas de madeira e metal** (caixotes, portas, barris) podem ser atravessadas por armas com boa penetração (fuzis e rifles de precisão), com dano reduzido.
 - A faca causa mais dano **pelas costas** (a facada forte pelas costas mata na hora).
+
+### Pacotes de som
+
+O dono da sala escolhe em **Regras da partida → Sons** (ou em Configurações → Partida). Todo mundo na sala ouve o mesmo pacote:
+
+| Pacote | O que toca |
+|---|---|
+| **Padrão** | Sons gerados pelo próprio jogo |
+| **Profissional** | Gravações reais de armas (CC0, créditos em `public/sounds/profissional/CREDITOS.txt`) |
+| **Zoeira** | Sons gravados pela galera |
+
+Para gravar a zoeira, abra **http://localhost:3000/gravar.html** no computador que roda o servidor (o navegador só libera o microfone em `localhost`). Cada som do jogo tem um botão **● Gravar**: grave, ouça, salve. Quem estiver em outro computador pode mandar um arquivo gravado no celular pelo botão **📁 Arquivo**. Som que ninguém gravou toca o padrão. Se o `config.json` tiver `adminPassword`, a página pede essa senha para gravar ou apagar; para desligar a gravação, use `"soundUploads": false`.
 
 ---
 
