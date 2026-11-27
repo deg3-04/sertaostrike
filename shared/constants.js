@@ -95,6 +95,8 @@ export const CHARACTERS = [
   { id: 'joao',        name: 'João',        desc: 'Chimpanzé que anda em pé', team: 'tr' },
   { id: 'padre',       name: 'Lincuzinho',  desc: 'Padre de batina e tonsura', team: 'ct' },
   { id: 'professor',   name: 'Will',        desc: 'Óculos e duas entradas',  team: 'ct' },
+  { id: 'ceissa',      name: 'Ceissa',      desc: 'Loira de olhos verdes e pitó no alto', team: 'ct' },
+  { id: 'uriel',       name: 'Uriel',       desc: 'Babuíno albino de juba branca', team: 'tr' },
 ];
 
 export const SIDES = [

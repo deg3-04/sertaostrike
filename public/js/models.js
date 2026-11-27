@@ -648,6 +648,10 @@ export const CHAR_STYLE = {
   padre:      { top: 0x15151a, pants: 0x15151a, vest: 0x1c1c22, skin: 0xd9a888, gear: 0x6b5a48, gloves: 0xd9a888, boots: 0x111111, head: 'tonsure', face: 'plain', plain: true, robe: true, collar: true, cross: 0xd4af37, swatch: ['#15151a', '#ffffff', '#d4af37'] },
   // professor: pele clara, cabelo com entradas, óculos, camisa, jeans e colete
   professor:  { top: 0xa9c4e0, pants: 0x34465e, vest: 0x3d3f42, skin: 0xf2cdb0, gear: 0x3b2a1e, gloves: 0xf2cdb0, boots: 0x4a3626, head: 'receding', face: 'glasses', swatch: ['#a9c4e0', '#34465e', '#3b2a1e'] },
+  // Ceissa: loira de olhos verdes, cabelo preso num pitó para cima, regata justa e calça camuflada
+  ceissa:     { top: 0x2f3b2c, pants: 0x5a6446, vest: 0x2a3326, skin: 0xf1c9aa, gear: 0xf0cf6e, gloves: 0x3a2e24, boots: 0x2b221a, head: 'pito', face: 'greeneyes', plain: true, bust: true, swatch: ['#f0cf6e', '#3fae5a', '#2f3b2c'] },
+  // Uriel: babuíno albino — pelo branco, cara rosada, focinho comprido, juba e rabo
+  uriel:      { top: 0xeee8dc, pants: 0xeee8dc, vest: 0xeee8dc, skin: 0xeee8dc, face2: 0xeeaaa4, gear: 0xf6f2ea, gloves: 0xe8b4ac, boots: 0xe8b4ac, head: 'baboon', face: 'none', plain: true, mane: true, tail: true, rump: 0xe8828e, swatch: ['#eee8dc', '#eeaaa4', '#c0303a'] },
   mercenario: { top: 0x5c6066, pants: 0x3e4247, vest: 0x8a7a55, skin: 0xb07a55, gear: 0x1c1c1c, gloves: 0x2a2a2a, boots: 0x2a2620, head: 'cap', face: 'shades', band: 0xb3202a, swatch: ['#5c6066', '#8a7a55', '#b3202a'] },
 };
 
@@ -728,6 +732,22 @@ export class Character {
       hips.add(meshOf([colored(new THREE.CylinderGeometry(0.2, 0.28, 0.8, 14), st.pants, T(0, -0.4, 0)),
         colored(new THREE.CylinderGeometry(0.205, 0.205, 0.05, 14), 0x0c0c0e, T(0, 0.02, 0))], this.mat));
     }
+    if (st.rump) {
+      // glúteos rosados (calosidades do babuíno), atrás do quadril
+      const rump = [];
+      for (const s of [-1, 1]) {
+        const g = new THREE.SphereGeometry(0.085, 14, 10); g.scale(0.9, 1.1, 0.55);
+        rump.push(colored(g, st.rump, T(s * 0.075, -0.06, 0.105)));
+      }
+      hips.add(meshOf(rump, this.mat));
+    }
+    if (st.tail) {
+      // rabo de babuíno: sobe um pouco e cai em arco
+      const tail = [], pts = [V(0, 0.02, 0.12), V(0, 0.12, 0.26), V(0, 0.08, 0.4), V(0, -0.08, 0.5), V(0, -0.26, 0.52)];
+      for (let i = 0; i < pts.length - 1; i++) limb(tail, pts[i], pts[i + 1], 0.04 - i * 0.006, 0.034 - i * 0.006, st.top);
+      tail.push(colored(new THREE.SphereGeometry(0.03, 8, 6), st.gear, T(0, -0.27, 0.52)));
+      hips.add(meshOf(tail, this.mat));
+    }
     const legs = [];
     for (const s of [-1, 1]) {
       const hip = new THREE.Group(); hip.position.set(0.1 * s, -0.04, 0); hips.add(hip);
@@ -741,7 +761,7 @@ export class Character {
     const torso = new THREE.Group(); torso.position.y = 0.06; hips.add(torso);
     const tl = [
       colored(rbox(0.42, 0.5, 0.25), st.top, T(0, 0.27, 0)),
-      colored(rbox(0.46, 0.36, 0.3), st.vest, T(0, 0.3, 0)),
+      colored(rbox(st.bust ? 0.4 : 0.46, 0.36, 0.3), st.bust ? st.top : st.vest, T(0, 0.3, 0)),
       colored(rbox(0.44, 0.06, 0.27), st.plain ? st.vest : st.boots, T(0, 0.04, 0)),
       colored(new THREE.CylinderGeometry(0.07, 0.08, 0.08, 8), st.skin, T(0, 0.55, 0)),
     ];
@@ -754,6 +774,25 @@ export class Character {
     if (st.head === 'chimp') {
       // ombros largos e peito mais claro
       tl.push(colored(rbox(0.52, 0.16, 0.3), st.top, T(0, 0.44, 0)), colored(rbox(0.26, 0.24, 0.02), 0x3a2a1e, T(0, 0.3, -0.152)));
+    }
+    if (st.bust) {
+      // busto grande sob a regata
+      for (const s of [-1, 1]) {
+        const b = new THREE.SphereGeometry(0.105, 16, 12); b.scale(1, 0.95, 0.95);
+        tl.push(colored(b, st.top, T(s * 0.08, 0.33, -0.165)));
+      }
+      tl.push(colored(rbox(0.012, 0.07, 0.02), 0x1c241a, T(0, 0.35, -0.232)));
+      // decote e alças da regata
+      tl.push(colored(rbox(0.12, 0.07, 0.01), st.skin, T(0, 0.43, -0.152)));
+      for (const s of [-1, 1]) tl.push(colored(rbox(0.05, 0.1, 0.27), st.top, T(s * 0.13, 0.5, 0)));
+      // cintura mais fina com cinto
+      tl.push(colored(rbox(0.44, 0.05, 0.27), 0x3a2e24, T(0, 0.04, 0)), colored(rbox(0.06, 0.04, 0.01), 0xc9a13b, T(0, 0.04, -0.14)));
+    }
+    if (st.mane) {
+      // juba de babuíno sobre os ombros e as costas, peito mais claro
+      const mane = new THREE.SphereGeometry(0.3, 16, 12, 0, Math.PI * 2, 0, Math.PI * 0.55); mane.scale(1.05, 0.75, 0.9);
+      tl.push(colored(mane, st.gear, T(0, 0.4, 0.03)));
+      tl.push(colored(rbox(0.52, 0.16, 0.3), st.top, T(0, 0.44, 0)), colored(rbox(0.24, 0.22, 0.02), 0xf0d6cc, T(0, 0.28, -0.152)));
     }
     if (st.collar) {
       // colarinho clerical: gola preta com a lingueta branca na frente
@@ -828,6 +867,43 @@ export class Character {
         hl.push(colored(new THREE.SphereGeometry(0.128, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.4), st.gear, T(0, 0.055, 0.012))); // pelo do topo
         break;
       }
+      case 'pito': {
+        // cabelo loiro preso num pitó para cima: touca de cabelo, franja lateral,
+        // elástico e o tufo apontando para o alto
+        const H = st.gear;
+        hl.push(colored(new THREE.SphereGeometry(0.136, 20, 12, 0, Math.PI * 2, 0, Math.PI * 0.56), H, T(0, 0.047, 0.006)));
+        hl.push(colored(new THREE.SphereGeometry(0.137, 16, 10, Math.PI * 1.5 - 0.9, 1.8, Math.PI * 0.2, Math.PI * 0.14), H, T(0, 0.047, 0.004)));
+        hl.push(colored(rbox(0.1, 0.035, 0.03), H, T(0.03, 0.12, -0.1, 0.3, 0, -0.35)));
+        hl.push(colored(new THREE.CylinderGeometry(0.035, 0.035, 0.03, 12), 0xd23a6a, T(0, 0.19, 0.02)));
+        hl.push(colored(new THREE.CylinderGeometry(0.03, 0.045, 0.1, 12), H, T(0, 0.25, 0.025, 0.15, 0, 0)));
+        const tuft = new THREE.SphereGeometry(0.06, 14, 10); tuft.scale(1, 1.25, 1);
+        hl.push(colored(tuft, H, T(0, 0.34, 0.04)));
+        hl.push(colored(new THREE.CylinderGeometry(0.02, 0.03, 0.08, 10), H, T(0, 0.42, 0.04)));
+        for (const [x, rz] of [[-0.035, 0.5], [0.035, -0.5], [0, 0]]) hl.push(colored(new THREE.ConeGeometry(0.025, 0.09, 8), H, T(x, 0.48, 0.04, 0, 0, rz)));
+        break;
+      }
+      case 'baboon': {
+        // babuíno albino: cara rosada, focinho comprido de cão inclinado para baixo,
+        // testa saliente, olhos vermelhos, costeletas de pelo branco
+        const F = st.face2;
+        const face = new THREE.SphereGeometry(0.085, 14, 10); face.scale(1, 1.05, 0.5);
+        hl.push(colored(face, F, T(0, 0.06, -0.085)));
+        const muzzle = new THREE.SphereGeometry(0.06, 14, 10); muzzle.scale(0.72, 0.62, 2.1);
+        hl.push(colored(muzzle, F, T(0, -0.005, -0.19, 0.28, 0, 0)));
+        hl.push(colored(rbox(0.055, 0.035, 0.03), 0xd2807a, T(0, -0.04, -0.302, 0.28, 0, 0)));                  // ponta do nariz
+        hl.push(colored(rbox(0.014, 0.012, 0.01), 0x4a1e1e, T(-0.013, -0.036, -0.319)), colored(rbox(0.014, 0.012, 0.01), 0x4a1e1e, T(0.013, -0.036, -0.319))); // narinas
+        hl.push(colored(rbox(0.05, 0.012, 0.13), 0xb8605c, T(0, -0.07, -0.22, 0.28, 0, 0)));                     // boca
+        hl.push(colored(rbox(0.17, 0.028, 0.05), 0xf2c4bc, T(0, 0.105, -0.105)));                                 // testa
+        hl.push(colored(rbox(0.028, 0.02, 0.02), 0xc0303a, T(-0.04, 0.075, -0.13)), colored(rbox(0.028, 0.02, 0.02), 0xc0303a, T(0.04, 0.075, -0.13)));
+        hl.push(colored(rbox(0.008, 0.008, 0.005), 0xffffff, T(-0.034, 0.079, -0.141)), colored(rbox(0.008, 0.008, 0.005), 0xffffff, T(0.046, 0.079, -0.141)));
+        for (const s of [-1, 1]) {
+          hl.push(colored(new THREE.SphereGeometry(0.026, 8, 6), F, T(s * 0.128, 0.075, 0.0)));                  // orelhinhas
+          const cheek = new THREE.SphereGeometry(0.065, 10, 8); cheek.scale(0.75, 1.25, 1.1);
+          hl.push(colored(cheek, st.gear, T(s * 0.115, -0.01, -0.03)));                                           // costeletas
+        }
+        hl.push(colored(new THREE.SphereGeometry(0.134, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.42), st.gear, T(0, 0.058, 0.02)));
+        break;
+      }
       case 'tonsure':
         // tonsura: topo careca (a pele da cabeça aparece) com um anel de cabelo em volta
         {
@@ -854,6 +930,18 @@ export class Character {
       case 'shades': hl.push(colored(rbox(0.2, 0.035, 0.03), 0x0a0a0a, T(0, 0.07, -0.118))); break;
       case 'beard': hl.push(colored(rbox(0.2, 0.08, 0.1), 0x2a1a10, T(0, -0.02, -0.07))); eyes(); break;
       case 'none': break;
+      case 'greeneyes': {
+        // olhos verdes com branco, cílios, sobrancelhas loiras e batom
+        for (const s of [-1, 1]) {
+          hl.push(colored(rbox(0.042, 0.024, 0.012), 0xf6f6f2, T(s * 0.045, 0.07, -0.118)));
+          hl.push(colored(rbox(0.02, 0.022, 0.012), 0x2fae4e, T(s * 0.045, 0.07, -0.123)));
+          hl.push(colored(rbox(0.01, 0.012, 0.01), 0x0a0a0a, T(s * 0.045, 0.07, -0.128)));
+          hl.push(colored(rbox(0.048, 0.008, 0.012), 0x1a1210, T(s * 0.045, 0.085, -0.12, 0, 0, s * -0.12)));
+          hl.push(colored(rbox(0.045, 0.01, 0.01), 0xc9a24e, T(s * 0.045, 0.1, -0.115, 0, 0, s * -0.15)));
+        }
+        hl.push(colored(rbox(0.05, 0.016, 0.012), 0xc8455a, T(0, -0.01, -0.118)));
+        break;
+      }
       case 'glasses': {
         // óculos de armação escura: dois aros, ponte e hastes
         eyes();
