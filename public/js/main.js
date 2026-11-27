@@ -79,7 +79,16 @@ class Game {
 
   serverTime() { return net.serverTime(); }
   renderTime() { return net.serverTime() - this.interpDelay(); }
-  interpDelay() { return Math.min(0.2, Math.max(0.05, 2.2 / NET.snapshotRate + net.jitter * 2)); }
+  interpDelay() {
+    const target = Math.min(0.2, Math.max(0.05, 2.2 / NET.snapshotRate + net.jitter * 2));
+    const nowS = performance.now() / 1000;
+    if (this.interpCur === undefined) { this.interpCur = target; this.interpAt = nowS; }
+    // aproxima-se do alvo a no máximo 20 ms por segundo
+    const step = Math.min(0.1, nowS - this.interpAt) * 0.02;
+    this.interpAt = nowS;
+    this.interpCur += Math.max(-step, Math.min(step, target - this.interpCur));
+    return this.interpCur;
+  }
   settings_match() { return this.matchSettings; }
 
   // ------------------------------------------------------------------ inicialização
@@ -596,8 +605,8 @@ class Game {
       me.refillInventory(m.inv, m.nades);
       if (this.matchSettings.killRefill && !this.matchSettings.infiniteAmmo) parts.push('munição');
     }
-    const nn = { he: 'granada HE', flash: 'granada de luz', smoke: 'granada de fumaça' };
-    if (m.bonus) { parts.push(`+1 ${nn[m.bonus]}`); this.hud.announce(`Sequência de ${m.streak}! +1 ${nn[m.bonus]}`); this.audio.announce(2); }
+    const nn = { he: 'granada HE', flash: 'granada de luz', smoke: 'granada de fumaça', mine: 'mina' };
+    if (m.bonus) { parts.push(`+1 ${nn[m.bonus]}`); this.hud.announce(`${m.mk === 3 ? 'Triple Kill' : 'Sequência de ' + m.mk}! +1 ${nn[m.bonus]}`); }
     if (m.bonus2) { parts.push('colete + capacete'); this.hud.announce(`Sequência de ${m.streak}! Colete completo`); this.audio.announce(3); }
     if (parts.length) { this.hud.toast(parts.join(' • '), 1.6); this.audio.heal(); }
     this.myStreak = m.streak; this.hud.setStreak(m.streak);

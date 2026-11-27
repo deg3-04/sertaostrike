@@ -19,7 +19,7 @@ export const KEY_LABELS = {
 
 export const DEFAULTS = {
   name: '',
-  char: 'sombra', primary: 'ak47', secondary: 'glock', side: 'any',
+  char: 'sombra', primary: 'ak47', secondary: 'glock', nade: 'he', side: 'any',
   sensitivity: 2.0, zoomSensitivity: 1.0, invertY: false, rawInput: true, wheelJump: false, autoBhop: false, damageNumbers: true,
   playerId: 'colors',          // identificação de jogadores: 'colors' (aliados e inimigos) | 'classic' (só aliados)
   fov: 74, viewmodelFov: 60, vmX: 0, vmY: 0, vmZ: 0, leftHanded: false, viewBob: true,

@@ -656,7 +656,7 @@ export const CHAR_STYLE = {
 };
 
 function colored(geo, hex, m) {
-  let g = geo.index ? geo.toNonIndexed() : geo.clone();
+  let g = geo.clone();
   if (m) g.applyMatrix4(m);
   for (const name of Object.keys(g.attributes)) if (!['position', 'normal'].includes(name)) g.deleteAttribute(name);
   const c = new THREE.Color(hex);
@@ -709,7 +709,22 @@ function rbox(w, h, d) {
   boxCache.set(key, g);
   return g;
 }
+// afunila a peça ao longo da altura: bottom/top = escala da largura embaixo/em cima
+function taper(geo, bottom, top, depth = 0.6) {
+  const g = geo.clone();
+  g.computeBoundingBox();
+  const y0 = g.boundingBox.min.y, h = (g.boundingBox.max.y - y0) || 1;
+  const P = g.attributes.position;
+  for (let i = 0; i < P.count; i++) {
+    const k = bottom + (top - bottom) * (P.getY(i) - y0) / h;
+    P.setX(i, P.getX(i) * k);
+    P.setZ(i, P.getZ(i) * (1 + (k - 1) * depth));
+  }
+  return g;
+}
 function meshOf(list, mat) {
+  // juntar peças exige todas indexadas ou todas não indexadas
+  if (!list.every((g) => g.index)) list = list.map((g) => (g.index ? g.toNonIndexed() : g));
   const m = new THREE.Mesh(mergeGeometries(list, false), mat);
   m.castShadow = true;
   return m;
@@ -793,17 +808,20 @@ export class Character {
     const legs = [];
     for (const s of [-1, 1]) {
       const hip = new THREE.Group(); hip.position.set(0.1 * s, -0.04, 0); hips.add(hip);
-      hip.add(meshOf([colored(rbox(0.15, 0.46, 0.17), st.pants, T(0, -0.23, 0)), colored(rbox(0.16, 0.12, 0.18), st.vest, T(0, -0.08, 0))], this.mat));
+      hip.add(meshOf([colored(taper(rbox(0.15, 0.46, 0.17), 0.8, 1.1), st.pants, T(0, -0.23, 0)), colored(rbox(0.16, 0.12, 0.18), st.vest, T(0, -0.08, 0))], this.mat));
       const knee = new THREE.Group(); knee.position.y = -0.46; hip.add(knee);
-      knee.add(meshOf([colored(rbox(0.13, 0.4, 0.15), st.pants, T(0, -0.2, 0)), colored(rbox(0.15, 0.13, 0.27), st.boots, T(0, -0.4, -0.04)),
+      const sole = new THREE.Color(st.boots).multiplyScalar(0.45).getHex();
+      knee.add(meshOf([colored(taper(rbox(0.13, 0.4, 0.15), 0.78, 1.04), st.pants, T(0, -0.2, 0)), colored(rbox(0.15, 0.13, 0.27), st.boots, T(0, -0.4, -0.04)),
+        colored(rbox(0.16, 0.03, 0.285), sole, T(0, -0.465, -0.045)), colored(rbox(0.06, 0.06, 0.012), sole, T(0, -0.37, -0.176)),
+        colored(taper(rbox(0.145, 0.1, 0.16), 1.0, 0.92), st.boots, T(0, -0.31, 0)),
         colored(rbox(0.14, 0.12, 0.16), st.vest, T(0, -0.02, -0.03))], this.mat));
       legs.push({ hip, knee });
     }
     // tronco
     const torso = new THREE.Group(); torso.position.y = 0.06; hips.add(torso);
     const tl = [
-      colored(rbox(0.42, 0.5, 0.25), st.top, T(0, 0.27, 0)),
-      colored(rbox(st.bust ? 0.4 : 0.46, 0.36, 0.3), st.bust ? st.top : st.vest, T(0, 0.3, 0)),
+      colored(taper(rbox(0.42, 0.5, 0.25), 0.84, 1.08), st.top, T(0, 0.27, 0)),
+      colored(taper(rbox(st.bust ? 0.4 : 0.46, 0.36, 0.3), 0.9, 1.05), st.bust ? st.top : st.vest, T(0, 0.3, 0)),
       colored(rbox(0.44, 0.06, 0.27), st.plain ? st.vest : st.boots, T(0, 0.04, 0)),
       colored(new THREE.CylinderGeometry(0.07, 0.08, 0.08, 8), st.skin, T(0, 0.55, 0)),
     ];
@@ -1068,9 +1086,13 @@ export class Character {
       const E = elbowPos(S, H, 0.29, 0.29, V(side * 0.8, -1, 0.3));
       limb(list, S, E, 0.06, 0.055, st.top);
       limb(list, E, H, 0.052, 0.045, st.top);
-      list.push(colored(rbox(0.07, 0.07, 0.09), st.gloves, T(H.x, H.y, H.z)));
+      list.push(colored(rbox(0.062, 0.072, 0.075), st.gloves, T(H.x, H.y, H.z + 0.008)));
+      list.push(colored(rbox(0.066, 0.034, 0.05), st.gloves, T(H.x, H.y - 0.034, H.z - 0.025)));
+      list.push(colored(rbox(0.024, 0.024, 0.05), st.gloves, T(H.x - side * 0.036, H.y + 0.01, H.z - 0.02)));
+      list.push(colored(new THREE.CylinderGeometry(0.047, 0.047, 0.03, 12), st.gloves, T(H.x, H.y + 0.045, H.z + 0.01)));
     }
     list.push(colored(rbox(0.12, 0.1, 0.12), st.vest, T(0.23, 0.0, 0)), colored(rbox(0.12, 0.1, 0.12), st.vest, T(-0.23, 0.0, 0)));
+    for (const sx of [-1, 1]) { const delt = new THREE.SphereGeometry(0.072, 12, 8); delt.scale(1, 0.9, 1.05); list.push(colored(delt, st.top, T(sx * 0.235, -0.04, 0))); }
     this.armMesh = meshOf(list, this.mat);
     aim.add(this.armMesh);
   }

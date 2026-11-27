@@ -190,7 +190,9 @@ export class ViewModel {
   stopReload() { this.st.reload = -1; if (this.cur) { this.cur.mag.visible = true; this.cur.mag.position.copy(this.cur.magBase); } }
   inspect() { if (this.st.reload < 0 && this.st.draw >= 1) this.st.inspect = 0; }
   knife(mode) { this.st.knife = 0; this.st.knifeMode = mode; this.st.inspect = -1; }
-  throwNade() { this.st.throwT = 0; }
+  // fromHold: já estava com o braço para trás (segurando), só faz o movimento para frente
+  throwNade(fromHold) { this.st.throwT = fromHold ? 0.35 : 0; }
+  holdNade(on) { this.holding = on; if (!on) this.st.hold = 0; }
   setScoped(on) { this.scoped = on; }
   landed(speed) { this.st.land = Math.min(0.07, speed * 0.006); }
 
@@ -338,6 +340,12 @@ export class ViewModel {
         pz += a * (1 - b) * 0.08 - b * (1 - c) * 0.22; rx += -a * (1 - b) * 0.2 - b * (1 - c) * 0.35; px -= b * (1 - c) * 0.06;
       }
       if (t >= 1) s.knife = -1;
+    }
+    // granada segurada (pino puxado): braço para trás, tremendo de leve
+    s.hold = this.holding ? Math.min(1, (s.hold || 0) + dt / 0.2) : 0;
+    if (s.hold > 0 && s.throwT < 0) {
+      const h = s.hold * s.hold * (3 - 2 * s.hold), tr = Math.sin(s.t * 40) * 0.002 * h;
+      pz += h * 0.1; py += h * 0.06 + tr; rx += h * 0.6; px += tr;
     }
     // granada
     if (s.throwT >= 0) {

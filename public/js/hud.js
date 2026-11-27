@@ -427,6 +427,16 @@ export class HUD {
     // mensagens
     if (this.centerT > 0) { this.centerT -= dt; if (this.centerT < 0.4) el.centermsg.style.opacity = Math.max(0, this.centerT / 0.4); }
     if (this.announceT > 0) { this.announceT -= dt; if (this.announceT < 0.5) el.announce.style.opacity = Math.max(0, this.announceT / 0.5); }
+    // granada segurada: barra de força e, para HE/flash, o pavio que resta
+    const cs = me && me.alive && me.cookState ? me.cookState(me.now()) : null;
+    if (!!cs !== this.ncShown) { this.ncShown = !!cs; $('nadecharge').classList.toggle('hidden', !cs); }
+    if (cs) {
+      $('ncpow').style.width = Math.round(cs.power * 100) + '%';
+      const hasFuse = cs.fuseLeft !== null;
+      $('ncfl').style.display = $('ncfb').style.display = hasFuse ? '' : 'none';
+      if (hasFuse) $('ncfuse').style.width = Math.round(cs.fuseLeft / cs.fuse * 100) + '%';
+      $('nadecharge').classList.toggle('danger', hasFuse && cs.fuseLeft < cs.fuse * 0.4);
+    }
     if (this.multiT > 0) { this.multiT -= dt; if (this.multiT <= 0) { el.multikill.style.opacity = 0; el.multikill.classList.remove('show'); } }
     if (this.toastT > 0) { this.toastT -= dt; if (this.toastT <= 0) el.toast.style.opacity = 0; }
     // relógio / informações

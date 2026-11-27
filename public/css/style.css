@@ -161,6 +161,13 @@ input, select { font-family: inherit; }
 #centermsg img { height: 24px; }
 #announce { position: absolute; left: 50%; top: 26%; transform: translateX(-50%); font-size: 34px; font-weight: 900; letter-spacing: 4px; color: var(--accent); text-transform: uppercase; text-align: center; }
 #announce .an { animation: annin .35s ease-out; }
+/* granada segurada: força e pavio */
+#nadecharge { position: absolute; left: 50%; top: calc(50% + 46px); transform: translateX(-50%); width: 170px; display: grid; grid-template-columns: 52px 1fr; gap: 4px 8px; align-items: center; font-size: 10px; font-weight: 800; letter-spacing: 1px; color: #fff; text-shadow: 0 1px 2px #000; }
+#nadecharge .ncb { height: 6px; background: rgba(0,0,0,.5); border: 1px solid rgba(255,255,255,.3); border-radius: 3px; overflow: hidden; }
+#nadecharge .ncb i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #ffd27a, #ff8a2a); }
+#nadecharge .fuse i { background: linear-gradient(90deg, #ff3a2a, #ffcf4a); }
+#nadecharge.danger .fuse { animation: ncblink .25s infinite alternate; }
+@keyframes ncblink { to { border-color: #ff3a2a; box-shadow: 0 0 8px #ff3a2a; } }
 /* abates em sequência: quanto maior a sequência, maior, mais quente e mais tremido */
 #multikill { position: absolute; left: 50%; top: 15%; transform: translateX(-50%); text-align: center; pointer-events: none; opacity: 0; transition: opacity .4s; white-space: nowrap; }
 #multikill .mkt { font-weight: 900; text-transform: uppercase; font-style: italic; letter-spacing: 3px; line-height: 1; -webkit-text-stroke: 1px rgba(0,0,0,.55); }

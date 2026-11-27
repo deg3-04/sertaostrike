@@ -446,6 +446,13 @@ export class GameAudio {
     const dx = pos[0] - this.listenerPos.x, dy = pos[1] - this.listenerPos.y, dz = pos[2] - this.listenerPos.z;
     const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
     if (dist > (o.maxDist || 140)) return null;
+    // muitos sons 3D começando ao mesmo tempo sobrecarregam o áudio (estalos):
+    // acima de 18 em 120 ms, só os próximos tocam
+    const ct = ctx.currentTime;
+    const rec = this.recentVoices || (this.recentVoices = []);
+    while (rec.length && ct - rec[0] > 0.12) rec.shift();
+    if (rec.length >= 18 && dist > 10) return null;
+    rec.push(ct);
     const occ = this.occlusion ? this.occlusion(pos) : false;
     const lp = ctx.createBiquadFilter();
     lp.type = 'lowpass';
@@ -821,32 +828,96 @@ export class GameAudio {
     }[kind] || [880];
     seq.forEach((f, i) => this.tone(d, t + i * (kind === 'cap' ? 0.11 : 0.09), { type: kind === 'cap' ? 'square' : 'triangle', f0: f, dur: 0.22, gain: kind === 'cap' ? 0.07 : 0.12 }));
   }
-  // abate em sequência: fanfarra que cresce com a quantidade e a voz falando o nome
+  // abate em sequência: "stinger" de sintetizador que sobe de tom e ganha
+  // camadas a cada abate. Estrutura: subida (ruído + serra deslizando até a nota)
+  // -> impacto (acorde de supersaw abrindo em estéreo, sino FM, bumbo grave,
+  // estalo) -> brilho (arpejo de faíscas, eco uma oitava acima, prato e acorde
+  // sustentado nos níveis mais altos). Quem fez os abates ouve mais alto.
   multiKill(n, mine) {
-    const names = { 2: 'Double kill', 3: 'Triple kill', 4: 'Quadra kill', 5: 'Penta kill', 6: 'Hexa kill', 7: 'Hepta kill', 8: 'Octa kill', 9: 'Nona kill', 10: 'Deca kill' };
-    const text = names[n] || 'Godlike';
-    if (this.ready()) {
-      const t = this.ctx.currentTime, d = this.out(null, { ui: true, rev: 0.4 });
-      const base = [523, 659, 784, 988, 1175, 1319, 1568];
-      const k = Math.min(base.length, n + 1);
-      for (let i = 0; i < k; i++) this.tone(d, t + i * 0.06, { type: i % 2 ? 'square' : 'triangle', f0: base[i], dur: 0.3, gain: mine ? 0.09 : 0.06 });
-      if (n >= 4) this.tone(d, t, { type: 'sawtooth', f0: 110, f1: 55, dur: 0.6, gain: 0.08 });
+    if (!this.ready()) return;
+    const ctx = this.ctx, t = ctx.currentTime + 0.01;
+    const lvl = Math.max(2, Math.min(10, n));
+    const out = ctx.createGain(); out.gain.value = (mine ? 1 : 0.45) * 0.85;
+    out.connect(this.uiGain);
+    this.sendRev(out, 0.3 + lvl * 0.05);
+    // a cada abate o tom sobe na escala maior (sensação de "subindo de nível")
+    const steps = [0, 0, 0, 2, 4, 5, 7, 9, 11, 12, 14];
+    const root = 330 * Math.pow(2, steps[lvl] / 12);
+    const env = (g, t0, peak, att, dec) => {
+      g.gain.setValueAtTime(0.0001, t0);
+      g.gain.exponentialRampToValueAtTime(peak, t0 + att);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + att + dec);
+    };
+    const pan = (v) => { const p = ctx.createStereoPanner ? ctx.createStereoPanner() : ctx.createGain(); if (p.pan) p.pan.value = v; p.connect(out); return p; };
+    const noise = (t0, dur, type, f0, f1, q, peak, att) => {
+      if (!this.noiseBuf) return;
+      const src = ctx.createBufferSource(); src.buffer = this.noiseBuf; src.loop = true;
+      const fl = ctx.createBiquadFilter(); fl.type = type; fl.Q.value = q;
+      fl.frequency.setValueAtTime(f0, t0); if (f1) fl.frequency.exponentialRampToValueAtTime(f1, t0 + dur);
+      const g = ctx.createGain(); env(g, t0, peak, att, dur);
+      src.connect(fl); fl.connect(g); g.connect(out);
+      src.start(t0); src.stop(t0 + att + dur + 0.05);
+    };
+    // sino FM brilhante
+    const bell = (freq, t0, peak, dec) => {
+      const car = ctx.createOscillator(), mod = ctx.createOscillator(), mg = ctx.createGain(), g = ctx.createGain();
+      car.frequency.value = freq; mod.frequency.value = freq * 3.5;
+      mg.gain.setValueAtTime(freq * 2.4, t0); mg.gain.exponentialRampToValueAtTime(freq * 0.05, t0 + dec);
+      mod.connect(mg); mg.connect(car.frequency);
+      env(g, t0, peak, 0.003, dec);
+      car.connect(g); g.connect(out);
+      car.start(t0); mod.start(t0); car.stop(t0 + dec + 0.05); mod.stop(t0 + dec + 0.05);
+    };
+    // supersaw: 4 serras desafinadas por nota, metade à esquerda e metade à direita
+    const supersaw = (freq, t0, peak, dec, cut) => {
+      for (const [side, dets] of [[-0.75, [-18, 7]], [0.75, [-6, 17]]]) {
+        const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.Q.value = 3;
+        lp.frequency.setValueAtTime(freq * 1.5, t0);
+        lp.frequency.exponentialRampToValueAtTime(Math.min(16000, freq * cut), t0 + 0.06);
+        lp.frequency.exponentialRampToValueAtTime(freq * 1.2, t0 + dec);
+        const g = ctx.createGain(); env(g, t0, peak, 0.006, dec);
+        lp.connect(g); g.connect(pan(side));
+        for (const det of dets) {
+          const o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.value = freq; o.detune.value = det;
+          o.connect(lp); o.start(t0); o.stop(t0 + dec + 0.05);
+        }
+      }
+    };
+    // ---- subida
+    const rise = 0.07 + lvl * 0.022;
+    noise(t, rise, 'bandpass', 500, 6000 + lvl * 600, 1.2, 0.04 + lvl * 0.009, rise * 0.9);
+    {
+      const o = ctx.createOscillator(); o.type = 'sawtooth';
+      o.frequency.setValueAtTime(root * 0.5, t); o.frequency.exponentialRampToValueAtTime(root, t + rise);
+      const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.setValueAtTime(800, t); lp.frequency.exponentialRampToValueAtTime(5000, t + rise);
+      const g = ctx.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.03 + lvl * 0.004, t + rise); g.gain.exponentialRampToValueAtTime(0.0001, t + rise + 0.04);
+      o.connect(lp); lp.connect(g); g.connect(out); o.start(t); o.stop(t + rise + 0.08);
     }
-    // voz sintetizada do navegador (em inglês), mais grave e lenta quanto maior a sequência
-    try {
-      const sp = window.speechSynthesis;
-      if (!sp) return;
-      sp.cancel();
-      const u = new SpeechSynthesisUtterance(text);
-      const voices = sp.getVoices();
-      const v = voices.find((x) => /^en(-|_)/i.test(x.lang) && /male|david|guy|daniel|george|mark/i.test(x.name)) || voices.find((x) => /^en(-|_)/i.test(x.lang));
-      if (v) { u.voice = v; u.lang = v.lang; } else u.lang = 'en-US';
-      u.rate = Math.max(0.75, 1.05 - (n - 2) * 0.04);
-      u.pitch = Math.max(0.3, 0.85 - (n - 2) * 0.07);
-      const s = this.settings;
-      u.volume = Math.max(0, Math.min(1, (s.masterVolume ?? 0.8) * Math.max(0.4, s.uiVolume ?? 0.6) * 1.4));
-      sp.speak(u);
-    } catch {}
+    const hit = t + rise;
+    // ---- impacto: acorde que ganha notas a cada nível
+    const chord = [1, 1.5, 2, 1.26, 3, 2.52].slice(0, Math.min(6, lvl));
+    const dec = 0.45 + lvl * 0.07;
+    const per = 0.05 / Math.sqrt(chord.length);
+    for (const k of chord) supersaw(root * k, hit, per, dec, 10 + lvl);
+    bell(root * 2, hit, 0.12, dec + 0.2);
+    bell(root * 3, hit + 0.01, 0.05, dec);
+    // bumbo grave e estalo
+    this.tone(out, hit, { type: 'sine', f0: 170, f1: 38, dur: 0.22 + lvl * 0.03, gain: 0.16 + lvl * 0.025 });
+    noise(hit, 0.09, 'highpass', 1800, 0, 0.7, 0.07 + lvl * 0.006, 0.002);
+    // ---- brilho depois do impacto
+    if (lvl >= 3) {
+      const arp = [2, 2.52, 3, 4, 5.04, 6, 8];
+      const cnt = Math.min(arp.length, lvl - 1);
+      for (let i = 0; i < cnt; i++) this.tone(out, hit + 0.07 + i * 0.04, { type: 'triangle', f0: root * arp[i], dur: 0.18, gain: 0.03 });
+    }
+    if (lvl >= 5) noise(hit, 0.9 + lvl * 0.08, 'highpass', 6500, 0, 0.5, 0.035 + lvl * 0.004, 0.004); // prato
+    if (lvl >= 6) for (const k of [2, 3, 4]) supersaw(root * k, hit + 0.24, per * 0.6, dec * 0.8, 14); // eco uma oitava acima
+    if (lvl >= 8) {
+      // acorde sustentado e um segundo bumbo, como uma "virada"
+      for (const k of [0.5, 0.75, 1, 1.26]) supersaw(root * k, hit + 0.12, per * 0.8, 1.6, 6);
+      this.tone(out, hit + 0.24, { type: 'sine', f0: 150, f1: 36, dur: 0.35, gain: 0.2 });
+    }
+    if (lvl >= 10) { bell(root * 4, hit + 0.35, 0.06, 1.4); noise(hit + 0.3, 1.6, 'bandpass', 9000, 2500, 2, 0.03, 0.2); }
   }
   announce(level) {
     if (!this.ready()) return;

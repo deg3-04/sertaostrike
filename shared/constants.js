@@ -44,6 +44,9 @@ export const GRENADE = {
   throwSpeedStrong: 17.5,
   throwSpeedWeak: 7.0,
   fuseSteps: 102,          // 1,6 s a 64 passos/s (HE e flash)
+  chargeTime: 0.9,         // segurando o botão: tempo para chegar à força máxima
+  minCharge: 0.3,          // força de um toque rápido (0..1)
+  cookFree: 1.0,           // segundos segurando antes do pavio começar a queimar (HE e flash)
   smokeMinSteps: 64,       // fumaça só "estoura" parada e após 1 s
   smokeMaxSteps: 64 * 6,
   heRadius: 9.0,

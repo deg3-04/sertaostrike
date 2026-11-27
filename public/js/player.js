@@ -88,6 +88,7 @@ export class LocalPlayer {
 
   die(killerId) {
     this.alive = false;
+    if (this.cooking) { this.cooking = null; this.g.viewmodel.holdNade(false); }
     this.deathPos = new THREE.Vector3(this.ms.pos[0], this.ms.pos[1] + this.ms.eyeOffset, this.ms.pos[2]);
     this.deathT = 0;
     this.killerId = killerId;
@@ -121,6 +122,7 @@ export class LocalPlayer {
     this.setScope(0, true);
     this.resumeZoom = null;
     this.throwing = null;
+    this.cancelCook();
     this.deployUntil = this.now() + w.deploy;
     this.triggerLock = false;
     this.g.viewmodel.setWeapon(id, w.deploy);
@@ -246,6 +248,38 @@ export class LocalPlayer {
     this.g.audio.knifeSwing(null);
     this.g.net.send({ t: 'k', m: mode, d: viewDir(this.yaw, this.pitch), rt: this.g.renderTime() });
     this.protectedUntil = 0;
+  }
+
+  // segurar o botão: puxa o pino e carrega a força; soltar: lança
+  startCook(t) {
+    if (this.throwing || this.cooking || t < this.deployUntil || !(this.nades[this.weapon] > 0)) return;
+    this.cooking = { kind: this.weapon, at: t };
+    this.g.viewmodel.holdNade(true);
+    this.g.audio.pin();
+    this.g.net.send({ t: 'gp', k: this.weapon });
+  }
+  cookState(t) {
+    const c = this.cooking;
+    if (!c) return null;
+    const held = t - c.at;
+    const power = Math.min(1, GRENADE.minCharge + (1 - GRENADE.minCharge) * held / GRENADE.chargeTime);
+    const fuse = GRENADE.fuseSteps * GRENADE.dt;
+    const burnt = c.kind === 'smoke' ? 0 : Math.max(0, held - GRENADE.cookFree);
+    return { power, fuseLeft: c.kind === 'smoke' ? null : Math.max(0, fuse - burnt), fuse, kind: c.kind };
+  }
+  releaseCook(t) {
+    const st = this.cookState(t);
+    this.cooking = null;
+    if (!st) return;
+    this.throwing = { strong: st.power, at: t + 0.12, kind: st.kind };
+    this.g.viewmodel.holdNade(false);
+    this.g.viewmodel.throwNade(true);
+  }
+  cancelCook() {
+    if (!this.cooking) return;
+    this.cooking = null;
+    this.g.viewmodel.holdNade(false);
+    this.g.net.send({ t: 'gp', k: null });
   }
 
   startThrow(strong, t) {
@@ -380,7 +414,12 @@ export class LocalPlayer {
       } else if (this.weapon === 'mine') {
         if (input.firePressed()) this.placeMine(t);
       } else if (w.type === 'grenade') {
-        if (input.firePressed()) this.startThrow(true, t);
+        // botão esquerdo: segure para carregar, solte para lançar; direito: lançamento curto por baixo
+        if (this.cooking) {
+          const st = this.cookState(t);
+          if (!(this.nades[this.cooking.kind] > 0) || (st.fuseLeft !== null && st.fuseLeft <= 0)) { this.cooking = null; g.viewmodel.holdNade(false); this.afterThrowAt = t + 0.3; }
+          else if (!input.fire()) this.releaseCook(t);
+        } else if (input.firePressed()) this.startCook(t);
         else if (input.altPressed()) this.startThrow(false, t);
       } else {
         if (input.altPressed() && w.scope && t >= this.deployUntil && !this.reloading) {
@@ -401,6 +440,7 @@ export class LocalPlayer {
         }
       }
     }
+    if (this.cooking && !(controls && w && w.type === 'grenade')) this.releaseCook(t);
     if (this.throwing && t >= this.throwing.at) this.doThrow();
     if (this.afterThrowAt && t >= this.afterThrowAt) {
       this.afterThrowAt = 0;

@@ -464,7 +464,10 @@ export function stepGrenade(g, boxes) {
 export function grenadeThrow(eye, yaw, pitch, strong, playerVel) {
   // pitch: positivo = olhando para cima (radianos)
   let p = pitch + (10 * Math.PI / 180) * (1 - Math.abs(pitch) / (Math.PI / 2));
-  const speed = strong ? GRENADE.throwSpeedStrong : GRENADE.throwSpeedWeak;
+  // strong: true/false (forte/fraco) ou número 0..1 (força carregada segurando o botão)
+  const speed = typeof strong === 'number'
+    ? GRENADE.throwSpeedWeak + (GRENADE.throwSpeedStrong - GRENADE.throwSpeedWeak) * Math.max(0, Math.min(1, strong))
+    : strong ? GRENADE.throwSpeedStrong : GRENADE.throwSpeedWeak;
   const cp = Math.cos(p);
   const dir = [-Math.sin(yaw) * cp, Math.sin(p), -Math.cos(yaw) * cp];
   const v = [dir[0] * speed, dir[1] * speed, dir[2] * speed];

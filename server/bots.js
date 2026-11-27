@@ -120,6 +120,11 @@ export class BotBrain {
   }
   repath(t, goal) {
     const g = this.game;
+    // muitos bots querendo calcular caminho no mesmo tick: este espera um pouco
+    if (g.pathBudget !== undefined) {
+      if (g.pathBudget <= 0) { this.repathAt = t + 0.02 + this.rand() * 0.05; return; }
+      g.pathBudget--;
+    }
     this.goal = goal || this.pickGoal(t);
     this.path = g.nav.findPath(this.p.pos, this.goal);
     this.pathIdx = 0;

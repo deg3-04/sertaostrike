@@ -285,7 +285,7 @@ export class Menus {
     if (!name) { name = 'Jogador' + Math.floor(Math.random() * 900 + 100); nick.value = name; }
     settings.name = name; saveSettings();
     g.audio.init();
-    const info = { name, char: settings.char, primary: settings.primary, secondary: settings.secondary, side: settings.side };
+    const info = { name, char: settings.char, primary: settings.primary, secondary: settings.secondary, nade: settings.nade || 'he', side: settings.side };
     if (!g.net.connected) {
       g.pendingJoin = info;
       const el = $('serverinfo'); if (el) el.innerHTML = '<span class="status-dot off"></span>Conectando ao servidor... você entra assim que a conexão abrir.';
@@ -304,17 +304,20 @@ export class Menus {
     const st = { primary: g.me.primary || settings.primary, secondary: g.me.secondary || settings.secondary, tab: 'primary' };
     this.loadout.innerHTML = `<div class="modal"><div class="head"><h2>Trocar armas</h2><span class="muted tiny" style="max-width:420px">Vale na hora se você ainda estiver protegido no renascimento; senão, no próximo renascimento.</span><button class="btn small" id="locancel">Fechar (${keyName(settings.keys.loadout)})</button><button class="btn small primary" id="lookbtn2">Confirmar</button></div>
       <div class="panel"><div id="lopicker"></div></div>
+      <div class="row" style="margin-top:14px"><div class="grow muted tiny">Explosivo (só um por vida; faça um <b>Triple Kill</b> para ganhar mais um):</div></div>
+      <div class="row wrap" style="margin-top:6px"><div class="seg" id="lonade">${[['he', 'Granada explosiva'], ['flash', 'Granada de luz'], ['smoke', 'Granada de fumaça'], ['mine', 'Mina terrestre']].map(([id, n]) => `<button data-nade="${id}" class="${(settings.nade || 'he') === id ? 'sel' : ''}">${n}</button>`).join('')}</div></div>
       <div class="row" style="margin-top:14px"><div class="grow muted tiny">Personagem e lado também podem ser trocados aqui:</div></div>
       <div class="row wrap" style="margin-top:6px"><div class="seg" id="lochar">${CHARACTERS.map((c) => `<button data-char="${c.id}" class="${settings.char === c.id ? 'sel' : ''}">${c.name}</button>`).join('')}</div></div>
       <div class="row wrap" style="margin-top:8px"><div class="seg" id="loside">${SIDES.map((s) => `<button data-side="${s.id}" class="${settings.side === s.id ? 'sel' : ''}">${s.name}</button>`).join('')}</div></div>
       <div class="row" style="margin-top:16px"><div class="grow"></div><button class="btn primary" id="lookbtn">Confirmar</button></div></div>`;
     weaponPicker($('lopicker'), st, g.icons);
     $('lochar').onclick = (e) => { const b = e.target.closest('[data-char]'); if (!b) return; settings.char = b.dataset.char; $('lochar').querySelectorAll('button').forEach((x) => x.classList.toggle('sel', x === b)); };
+    $('lonade').onclick = (e) => { const b = e.target.closest('[data-nade]'); if (!b) return; settings.nade = b.dataset.nade; $('lonade').querySelectorAll('button').forEach((x) => x.classList.toggle('sel', x === b)); };
     $('loside').onclick = (e) => { const b = e.target.closest('[data-side]'); if (!b) return; settings.side = b.dataset.side; $('loside').querySelectorAll('button').forEach((x) => x.classList.toggle('sel', x === b)); };
     $('locancel').onclick = () => this.closeLoadout();
     const confirm = () => {
       settings.primary = st.primary; settings.secondary = st.secondary; saveSettings();
-      g.net.send({ t: 'lo', primary: st.primary, secondary: st.secondary, char: settings.char, side: settings.side });
+      g.net.send({ t: 'lo', primary: st.primary, secondary: st.secondary, nade: settings.nade || 'he', char: settings.char, side: settings.side });
       g.viewmodel.setCharacter(settings.char);
       this.closeLoadout();
     };
@@ -603,14 +606,14 @@ export class Menus {
         ${sel('spawnMode', 'Onde renascer', [['action', 'Perto da ação (longe da mira inimiga)'], ['safe', 'Seguro (o mais longe possível)']])}
         ${num('killHeal', 'Vida recuperada por abate', '0 = desativado')}
         ${tg('killRefill', 'Abate recarrega a munição')}
-        ${tg('streakBonus', 'Bônus de sequência', '3 abates seguidos: +1 granada • 5: colete completo')}
+        ${tg('streakBonus', 'Bônus de sequência', '5 abates seguidos: colete completo (explosivo extra só com Triple Kill)')}
         ${tg('armor', 'Colete', 'Reduz dano no tronco')}
         ${tg('helmet', 'Capacete', 'Reduz dano na cabeça')}
         ${tg('infiniteAmmo', 'Munição reserva infinita')}
-        ${num('heGrenades', 'Granadas explosivas')}
-        ${num('flashGrenades', 'Granadas de luz')}
-        ${num('smokeGrenades', 'Granadas de fumaça')}
-        ${num('mines', 'Minas terrestres')}
+        ${num('heGrenades', 'Granada explosiva', '0 = proibida • cada jogador leva 1 explosivo')}
+        ${num('flashGrenades', 'Granada de luz', '0 = proibida')}
+        ${num('smokeGrenades', 'Granada de fumaça', '0 = proibida')}
+        ${num('mines', 'Mina terrestre', '0 = proibida')}
         ${tg('headshotOnly', 'Só tiro na cabeça')}
         ${tg('friendlyFireSelf', 'Dano da própria granada')}
         ${num('intermission', 'Placar final (s)', 'Tempo até a próxima partida')}

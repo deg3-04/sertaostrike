@@ -42,8 +42,13 @@ export const net = {
       net.lastPacket = performance.now();
       let m;
       try { m = JSON.parse(ev.data); } catch { return; }
-      if (m.t === 'pong') onPong(m);
-      emit(m.t, m);
+      // o servidor junta várias mensagens do mesmo instante num array
+      const list = Array.isArray(m) ? m : [m];
+      for (const x of list) {
+        if (!x || typeof x.t !== 'string') continue;
+        if (x.t === 'pong') onPong(x);
+        emit(x.t, x);
+      }
     };
   },
   on(type, fn) { (handlers[type] = handlers[type] || []).push(fn); },
@@ -69,8 +74,9 @@ function onPong(m) {
   const sorted = [...samples].sort((a, b) => a.rtt - b.rtt);
   const best = sorted.slice(0, Math.max(1, Math.ceil(sorted.length / 3)));
   const off = best.reduce((s, x) => s + x.off, 0) / best.length;
-  if (!net.synced) { net.offset = off; net.synced = true; }
-  else net.offset += (off - net.offset) * 0.3;
+  // ajuste suave: no máximo 4 ms por ping (salto grande = ressincroniza de uma vez)
+  if (!net.synced || Math.abs(off - net.offset) > 0.25) { net.offset = off; net.synced = true; }
+  else net.offset += Math.max(-0.004, Math.min(0.004, (off - net.offset) * 0.3));
   net.jitter = net.jitter * 0.8 + Math.abs(rtt - net.rtt) * 0.2;
   net.rtt = net.rtt * 0.7 + rtt * 0.3;
 }

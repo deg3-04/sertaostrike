@@ -7,7 +7,8 @@ Jogo de tiro em primeira pessoa no estilo Counter-Strike, leve e feito para joga
   - **Mata-mata em equipe (CT × TR)**: duas equipes equilibradas automaticamente; vence a equipe que chegar primeiro ao limite de abates (padrão 50) ou que tiver mais abates no fim do tempo. Fogo amigo desligado por padrão.
   - **Gun Game**: cada abate troca sua arma pela próxima da lista (Glock → USP-S → Five-SeveN → Desert Eagle → MP5-SD → UMP-45 → P90 → XM1014 → SSG 08 → M4A1-S → AK-47 → AUG → AWP → faca). Vence quem fizer o abate final com a faca. Uma facada rouba um nível da vítima.
   - **Capture a Bandeira (CT × TR)**: cada equipe tem uma bandeira na própria base (CT no norte, TR no sul). Encoste na bandeira inimiga para pegá-la e leve até a sua base, com a sua bandeira lá, para marcar um ponto. Se o portador morrer a bandeira cai: um inimigo pode pegá-la de novo e a equipe dona devolve à base só encostando nela (ou ela volta sozinha em 25 s). Vence quem chegar primeiro ao limite de capturas (padrão 3) ou tiver mais capturas no fim do tempo. O ícone da bandeira aparece através das paredes e a barra do topo mostra onde está cada uma.
-- **Abates recompensam**: +25 de vida, pente recarregado, e bônus de sequência (3 abates seguidos = +1 granada; 5 = colete e capacete).
+- **Abates recompensam**: +25 de vida, pente recarregado, e bônus de sequência (5 abates seguidos = colete e capacete).
+- **Um explosivo por jogador**: no menu de armas cada um escolhe o seu (granada explosiva, de luz, de fumaça ou mina) e renasce com 1. A única forma de ganhar outro é fazer um **Triple Kill** (e mais um a cada 3 abates na mesma sequência), até 3.
 - **Ritmo rápido**: renascimento em 1,5 s, perto da ação (mas fora da mira inimiga), movimento 7% mais rápido e mais controle no ar; opção de pulo automático segurando espaço.
 - **Dano 10% menor que o CS padrão** (ajustável em `DAMAGE_SCALE`, no arquivo `shared/constants.js`).
 - **Dano por parte do corpo** (cabeça, tronco, abdômen e pernas), com colete, capacete, queda de dano por distância e balas que atravessam madeira e metal fino.
@@ -128,7 +129,7 @@ Todas as teclas podem ser trocadas em **Opções › Teclas**.
 - **Início:** a partida só começa quando o dono da sala clica em **Iniciar partida**, com todos prontos (veja "Sala de espera").
 
 ### Abates em sequência
-- Abates feitos com até 4 segundos de intervalo viram uma sequência: **Double Kill**, **Triple Kill**, **Quadra Kill**, **Penta Kill**, Hexa, Hepta, Octa, Nona, Deca e, daí para cima, **Godlike**. Todo mundo no mapa vê o nome (maior e mais chamativo a cada abate) com o nick de quem fez, e ouve a voz do navegador falando o nome.
+- Abates feitos com até 4 segundos de intervalo viram uma sequência: **Double Kill**, **Triple Kill**, **Quadra Kill**, **Penta Kill**, Hexa, Hepta, Octa, Nona, Deca e, daí para cima, **Godlike**. Todo mundo no mapa vê o nome (maior e mais chamativo a cada abate) com o nick de quem fez, e ouve um efeito de sintetizador que sobe de tom a cada abate da sequência (mais alto para quem fez).
 
 ### Renascimento
 - **Tempo de renascimento** configurável em passos de 0,5 s (padrão 1,5 s). Enquanto espera, a câmera mostra quem te abateu e com quanta vida ele ficou.

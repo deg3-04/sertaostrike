@@ -11,6 +11,9 @@ import { traceBullet, rawDamage, applyArmor } from '../shared/combat.js';
 import { NavGrid } from './nav.js';
 import { BotBrain, BOT_NAMES } from './bots.js';
 
+const NADE_KINDS = ['he', 'flash', 'smoke', 'mine'];
+const NADE_SETTING = { he: 'heGrenades', flash: 'flashGrenades', smoke: 'smokeGrenades', mine: 'mines' };
+
 const now = () => performance.now() / 1000;
 const r3 = (v) => Math.round(v * 1000) / 1000;
 const r2 = (v) => Math.round(v * 100) / 100;
@@ -88,14 +91,33 @@ export class Game {
   }
 
   // ------------------------------------------------------------------ rede
+  // Tudo que sai para um jogador no mesmo instante vai junto num pacote só
+  // (um array JSON), enviado logo depois do processamento atual (setImmediate,
+  // sem esperar o próximo tick). Com muitos jogadores atirando, isso troca
+  // centenas de pacotes pequenos por segundo por poucas dezenas.
+  queue(p, s) {
+    if (!p.ws || p.ws.readyState !== 1) return;
+    (p.outQ || (p.outQ = [])).push(s);
+    if (!this.flushPending) { this.flushPending = true; setImmediate(() => this.flushOut()); }
+  }
+  flushOut() {
+    this.flushPending = false;
+    for (const p of this.players.values()) {
+      const q = p.outQ;
+      if (!q || !q.length) continue;
+      p.outQ = [];
+      if (!p.ws || p.ws.readyState !== 1) continue;
+      p.ws.send(q.length === 1 ? q[0] : '[' + q.join(',') + ']');
+    }
+  }
   send(p, obj) {
-    if (p.ws && p.ws.readyState === 1) p.ws.send(JSON.stringify(obj));
+    this.queue(p, JSON.stringify(obj));
   }
   broadcast(obj, exceptId) {
     const s = JSON.stringify(obj);
     for (const p of this.players.values()) {
       if (p.bot || p.id === exceptId) continue;
-      if (p.ws && p.ws.readyState === 1) p.ws.send(s);
+      this.queue(p, s);
     }
   }
   sendInfo(ws) {
@@ -133,6 +155,7 @@ export class Game {
       case 'f': this.onFire(p, m); break;
       case 'k': if (p.alive && p.weapon === 'knife') this.playerKnife(p, m.m ? 1 : 0, norm(m.d), this.clampRt(m.rt)); break;
       case 'g': this.playerThrow(p, m.k, m.o, m.v, m.cid | 0); break;
+      case 'gp': this.onPin(p, m.k); break;
       case 'mine': this.playerPlaceMine(p); break;
       case 'ready': this.onReady(p, !!m.v); break;
       case 'team': this.onTeamPick(p, m.v); break;
@@ -164,7 +187,7 @@ export class Game {
     const t = now();
     const p = {
       id: this.nextId++, ws: o.ws || null, bot: !!o.bot,
-      name: this.uniqueName(o.name), char: o.char, primary: o.primary, secondary: o.secondary, side: o.side,
+      name: this.uniqueName(o.name), char: o.char, primary: o.primary, secondary: o.secondary, side: o.side, nade: NADE_KINDS.includes(o.nade) ? o.nade : 'he',
       joinOrder: this.joinCounter++, joinedAt: t,
       alive: false, lifeId: 0, respawnAt: t + 0.3,
       pos: [0, 0, 0], vel: [0, 0, 0], yaw: 0, pitch: 0, crouch: false, onGround: true, walk: false, scoped: false,
@@ -207,6 +230,7 @@ export class Game {
       char: CHAR_IDS.includes(m.char) ? m.char : CHAR_IDS[0],
       primary: PRIMARIES.includes(m.primary) ? m.primary : 'ak47',
       secondary: SECONDARIES.includes(m.secondary) ? m.secondary : 'glock',
+      nade: m.nade,
       side: SIDE_IDS.includes(m.side) ? m.side : 'any',
       pick: m.side === 'north' ? 'ct' : m.side === 'south' ? 'tr' : null,
     });
@@ -355,7 +379,10 @@ export class Game {
       const w = WEAPONS[wid];
       p.inv[wid] = { mag: w.mag, res: inf ? 999 : w.reserve };
     }
-    p.nades = { he: this.settings.heGrenades, flash: this.settings.flashGrenades, smoke: this.settings.smokeGrenades, mine: this.settings.mines };
+    // só um explosivo por vida, do tipo escolhido no menu de armas
+    p.nades = { he: 0, flash: 0, smoke: 0, mine: 0 };
+    const kind = this.nadeKindOf(p);
+    if (kind) p.nades[kind] = 1;
     p.weapon = p.primary;
     p.reloading = null;
     p.lastShot = {};
@@ -715,8 +742,12 @@ export class Game {
     p.nades[kind]--;
     p.lastThrow = t;
     p.protectedUntil = 0;
+    // pavio já queimado enquanto o jogador segurava a granada (HE e flash)
+    const cooked = p.pinAt && p.pinKind === kind && kind !== 'smoke' ? Math.max(0, t - p.pinAt - GRENADE.cookFree) : 0;
+    p.pinAt = 0; p.pinKind = null;
     const id = this.nextGrenadeId++;
     const g = { id, kind, owner: p.id, sim: createGrenadeSim(origin, vel), st: t };
+    if (cooked > 0) g.sim.steps = Math.min(GRENADE.fuseSteps - 3, Math.round(cooked / GRENADE.dt));
     this.grenades.set(id, g);
     this.broadcast({ t: 'gt', id, k: kind, o: origin.map(r3), v: vel.map(r3), by: p.id, st: r3(t), cid });
     // volta para a arma principal quando acabar
@@ -744,6 +775,35 @@ export class Game {
       if (px * px + py * py + pz * pz < r * r) return true;
     }
     return false;
+  }
+
+  // pino puxado (o jogador está segurando a granada); k = null cancela
+  onPin(p, kind) {
+    if (!p.alive || this.phase === 'ended') return;
+    if (kind && ['he', 'flash', 'smoke'].includes(kind) && p.nades[kind] > 0) { p.pinAt = now(); p.pinKind = kind; }
+    else { p.pinAt = 0; p.pinKind = null; }
+  }
+  // granada segurada tempo demais ou portador morto: ela cai/explode onde ele está
+  updatePins(t) {
+    for (const p of this.players.values()) {
+      if (!p.pinAt) continue;
+      const kind = p.pinKind;
+      if (!kind || !(p.nades[kind] >= 0)) { p.pinAt = 0; continue; }
+      const burnt = t - p.pinAt - GRENADE.cookFree;
+      const over = kind !== 'smoke' && burnt >= GRENADE.fuseSteps * GRENADE.dt;
+      if (!over && p.alive) continue;
+      p.pinAt = 0; p.pinKind = null;
+      if (p.nades[kind] <= 0) continue;
+      if (!p.alive && kind === 'smoke') continue;
+      p.nades[kind]--;
+      const pos = [p.pos[0], p.pos[1] + (p.alive ? eyeHeight(p.crouch) - 0.3 : 0.2), p.pos[2]];
+      const id = this.nextGrenadeId++;
+      const g = { id, kind, owner: p.id, sim: createGrenadeSim(pos, [0, p.alive ? 0 : 1, 0]), st: t };
+      if (kind !== 'smoke') g.sim.steps = Math.max(0, Math.min(GRENADE.fuseSteps, Math.round(Math.max(0, burnt) / GRENADE.dt)));
+      this.grenades.set(id, g);
+      this.broadcast({ t: 'gt', id, k: kind, o: pos.map(r3), v: g.sim.v.map(r3), by: p.id, st: r3(t), cid: 0 });
+      if (over) { this.send(p, { t: 'toast', m: 'A granada explodiu na sua mão!', nades: p.nades }); this.explode(g); }
+    }
   }
 
   explode(g) {
@@ -966,7 +1026,7 @@ export class Game {
       kh: suicide ? 0 : killer.hp, ka: suicide ? 0 : killer.armor,
       rs: this.settings.respawnTime, ts: this.tscore,
     });
-    if (!suicide && !tk && killer.alive) this.rewardKill(killer, ggUp && !ggWin);
+    if (!suicide && !tk && killer.alive) this.rewardKill(killer, ggUp && !ggWin, multi);
     if (this.phase === 'live' && !suicide) {
       const lim = this.settings.endCondition;
       if (ggWin) this.endMatch('gungame');
@@ -980,8 +1040,15 @@ export class Game {
     if (this.phase === 'live' && this.suddenDeath) this.checkSudden();
   }
 
+  // tipo de explosivo do jogador: o escolhido, ou o primeiro que a sala permite
+  nadeKindOf(p) {
+    const ok = (k) => (this.settings[NADE_SETTING[k]] || 0) > 0;
+    if (ok(p.nade)) return p.nade;
+    return NADE_KINDS.find(ok) || null;
+  }
+
   // recompensas por abate: vida, munição, bônus de sequência e (Gun Game) próxima arma
-  rewardKill(k, ggUp) {
+  rewardKill(k, ggUp, multi = 0) {
     const st = this.settings;
     const out = { t: 'heal', hp: 0, streak: k.streak };
     if (ggUp) {
@@ -1004,13 +1071,12 @@ export class Game {
     const before = k.hp;
     k.hp = Math.min(PLAYER.maxHealth, k.hp + (st.killHeal || 0));
     out.hp = k.hp; out.healed = k.hp - before;
+    // explosivo extra: a única forma é fazer um triple kill (e a cada 3 abates a mais na mesma sequência)
+    if (!ggUp && st.mode !== 'gungame' && multi >= 3 && multi % 3 === 0) {
+      const kind = this.nadeKindOf(k);
+      if (kind && (k.nades[kind] || 0) < 3) { k.nades[kind] = (k.nades[kind] || 0) + 1; out.bonus = kind; out.mk = multi; }
+    }
     if (st.streakBonus && !ggUp && st.mode !== 'gungame') {
-      if (k.streak > 0 && k.streak % 3 === 0) {
-        // a cada 3 abates seguidos: +1 granada (HE, depois flash, depois fumaça)
-        const order = ['he', 'flash', 'smoke'];
-        const kind = order.find((n) => (k.nades[n] || 0) < 2) || null;
-        if (kind) { k.nades[kind] = (k.nades[kind] || 0) + 1; out.bonus = kind; }
-      }
       if (k.streak > 0 && k.streak % 5 === 0) {
         k.armor = PLAYER.maxArmor; k.helmet = true; out.bonus2 = 'armor';
       }
@@ -1238,6 +1304,7 @@ export class Game {
   onLoadout(p, m) {
     if (PRIMARIES.includes(m.primary)) p.primary = m.primary;
     if (SECONDARIES.includes(m.secondary)) p.secondary = m.secondary;
+    if (NADE_KINDS.includes(m.nade)) p.nade = m.nade;
     if (CHAR_IDS.includes(m.char) && m.char !== p.char) { p.char = m.char; if (this.phase === 'room') this.broadcastRoom(); }
     if (SIDE_IDS.includes(m.side) && m.side !== p.side) {
       // na sala, o lado preferido é a escolha de time
@@ -1307,7 +1374,7 @@ export class Game {
         const tgt = [...this.players.values()].find((q) => q.name.toLowerCase() === arg.toLowerCase());
         if (!tgt || tgt === p) return reply('Jogador não encontrado.');
         if (tgt.bot) { this.settings.bots = Math.max(0, this.players.size - 1); this.removePlayer(tgt, 'foi removido'); this.syncBots(); this.broadcastMatch(); }
-        else { this.send(tgt, { t: 'err', m: 'Você foi removido pelo anfitrião.' }); this.removePlayer(tgt, 'foi removido'); tgt.ws?.close(); }
+        else { if (tgt.ws && tgt.ws.readyState === 1) tgt.ws.send(JSON.stringify({ t: 'err', m: 'Você foi removido pelo anfitrião.' })); this.removePlayer(tgt, 'foi removido'); tgt.ws?.close(); }
         break;
       }
       case 'restart': case 'start':
@@ -1395,6 +1462,7 @@ export class Game {
   tick(dt) {
     const t = now();
     this.tickCount++;
+    this.pathBudget = 3; // cálculos de caminho dos bots neste tick (evita picos)
     if (this.phase === 'room') return; // sala: nada a simular nem a enviar
     const humans = [...this.players.values()].some((p) => !p.bot);
     if (!humans) return;
@@ -1418,6 +1486,7 @@ export class Game {
     }
     if (this.smokes.length) this.smokes = this.smokes.filter((s) => s.end > t);
     if (this.mines.size) this.updateMines(t);
+    this.updatePins(t);
     if (this.phase !== 'ended') {
       for (const p of this.players.values()) {
         if (!p.alive && !p.waiting && p.respawnAt && t >= p.respawnAt) this.spawnPlayer(p);
@@ -1544,6 +1613,12 @@ export class Game {
       list.push([p.id, r3(p.pos[0]), r3(p.pos[1]), r3(p.pos[2]), r3(p.yaw), r3(p.pitch), f, WEAPON_INDEX[p.weapon] ?? 0,
         r2(p.vel[0]), r2(p.vel[1]), r2(p.vel[2])]);
     }
-    this.broadcast({ t: 's', st: r3(t), p: list });
+    const s = JSON.stringify({ t: 's', st: r3(t), p: list });
+    for (const p of this.players.values()) {
+      if (p.bot || !p.ws) continue;
+      // conexão engasgada (Wi-Fi ruim): não empilha posições velhas, manda só as novas
+      if (p.ws.bufferedAmount > 96 * 1024) continue;
+      this.queue(p, s);
+    }
   }
 }
